@@ -77,12 +77,7 @@ export async function executeRender(params: RenderParams): Promise<void> {
       imageFormat,
       concurrency,
       chromiumOptions: {
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-        ],
+        enableMultiProcessOnLinux: true,
       },
       onProgress: ({ progress }) => {
         const percent = Math.round(progress * 100);
