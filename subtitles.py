@@ -244,7 +244,7 @@ def generate_srt(transcript, clip_start, clip_end, output_path, max_chars=20, ma
 # and Reels' own bottom UI — the caption/username block and the music ticker —
 # where they were partly covered on the platform even though the exported file
 # looked fine.
-SAFE_MARGIN_V = 43
+SAFE_MARGIN_V = 36
 
 
 # The caption look applied automatically to every generated clip. Chosen by
@@ -258,16 +258,16 @@ AUTO_CAPTION_STYLE = {
     "style": "karaoke",
     "alignment": "bottom",
     "font_name": "Anton",
-    "font_size": 38,
+    "font_size": 16,
     "font_color": "#FFFFFF",
     "highlight_color": "#FFE500",
     "border_color": "#000000",
-    "border_width": 4,
+    "border_width": 2,
     "effect": "pop",
     "base_opacity": 1.0,
     "uppercase": True,
-    "max_chars": 16,
-    "max_duration": 1.4,
+    "max_chars": 18,
+    "max_duration": 1.3,
 }
 
 
@@ -277,31 +277,31 @@ AUTO_CAPTION_STYLE = {
 # ships with, the rest are the short-form looks trending in 2026.
 _PRESET_BASE = {"style": "karaoke", "font_color": "#FFFFFF", "bg_opacity": 0.0,
                 "base_opacity": 1.0, "reveal": False, "shadow": 0,
-                "max_duration": 1.4}
+                "max_duration": 1.3}
 CAPTION_PRESETS = {
-    "default": {**_PRESET_BASE, "font_name": "Anton", "font_size": 38,
-                "highlight_color": "#FFE500", "border_width": 4, "effect": "pop",
-                "uppercase": True, "max_chars": 16},
+    "default": {**_PRESET_BASE, "font_name": "Anton", "font_size": 16,
+                "highlight_color": "#FFE500", "border_width": 2, "effect": "pop",
+                "uppercase": True, "max_chars": 18},
     # Words appear as they are spoken, yellow active word, shadow.
-    "hormozi": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 38,
-                "highlight_color": "#FFE500", "border_width": 4, "shadow": 2,
-                "effect": "pop", "uppercase": True, "reveal": True, "max_chars": 9},
+    "hormozi": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 16,
+                "highlight_color": "#FFE500", "border_width": 2, "shadow": 2,
+                "effect": "pop", "uppercase": True, "reveal": True, "max_chars": 14},
     # Solid box behind the active word (CapCut / Submagic).
-    "pill": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 38,
-             "highlight_color": "#7C3AED", "border_width": 3, "effect": "highlight",
-             "uppercase": True, "max_chars": 9},
-    "lime": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 38,
-             "highlight_color": "#A3FF12", "border_width": 3, "effect": "highlight",
-             "uppercase": True, "max_chars": 9},
+    "pill": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 16,
+             "highlight_color": "#7C3AED", "border_width": 2, "effect": "highlight",
+             "uppercase": True, "max_chars": 14},
+    "lime": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 16,
+             "highlight_color": "#A3FF12", "border_width": 2, "effect": "highlight",
+             "uppercase": True, "max_chars": 14},
     # One big word at a time.
-    "oneword": {**_PRESET_BASE, "font_name": "Anton", "font_size": 60,
-                "highlight_color": "#FFFFFF", "border_width": 5, "effect": "pop",
+    "oneword": {**_PRESET_BASE, "font_name": "Anton", "font_size": 24,
+                "highlight_color": "#FFFFFF", "border_width": 3, "effect": "pop",
                 "uppercase": True, "max_chars": 1},
     # No outline, soft shadow, sentence case.
-    "clean": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 29,
+    "clean": {**_PRESET_BASE, "font_name": "Montserrat ExtraBold", "font_size": 13,
               "highlight_color": "#FFFFFF", "border_width": 0, "shadow": 2,
               "effect": "none", "uppercase": False, "base_opacity": 0.7,
-              "max_chars": 12},
+              "max_chars": 16},
 }
 
 # Characters per line at font size 44, per font (Anton is condensed,
@@ -397,25 +397,22 @@ def generate_ass(transcript, clip_start, clip_end, output_path,
         return False
 
     # Match the SRT burn path: PlayResY 288 keeps font sizes consistent.
-    final_fontsize = int(_clamp_number(fontsize, 10, 200, 16) * 0.85)
+    final_fontsize = int(_clamp_number(fontsize, 10, 200, 16))
     if final_fontsize < 10:
         final_fontsize = 10
 
     align_map = {'top': 8, 'middle': 5, 'bottom': 2}
     ass_alignment = align_map.get(str(alignment).lower(), 2)
 
-    # On a SPLIT scene the two speakers are stacked and the seam between the
-    # halves (exactly mid-frame) is the one place the text covers nobody, so
-    # every word event inside such a stretch is anchored there with an inline
-    # \an5, per event rather than per style: a clip mixes stacked and single
-    # shots, and the text moves with the cut. ``split_ranges`` is a list of
-    # (start, end) in clip seconds (layout_ranges.split_ranges); the style's
-    # own alignment still rules everywhere else. Only the ASS path can do
-    # this: SRT burns carry one alignment for the whole file.
+    # In split/gaming mode, avoid covering the central action (crosshair / gameplay);
+    # keep bottom-aligned text at the clean bottom safe zone. Only explicit middle
+    # alignment anchors to mid-frame seam \an5.
     seam_ranges = [(float(a), float(b)) for a, b in (split_ranges or [])]
 
     def seam_prefix(t):
-        return "{\\an5}" if any(a <= t < b for a, b in seam_ranges) else ""
+        if str(alignment).lower() == 'middle' and any(a <= t < b for a, b in seam_ranges):
+            return "{\\an5}"
+        return ""
 
     safe_font = _sanitize_font_name(font_name)
     has_hindi = any(has_devanagari(w.get('word', '')) for block in blocks for w in block)

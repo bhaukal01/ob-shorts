@@ -4546,6 +4546,9 @@ def _visible_logs(logs):
     return friendly_logs(logs)
 
 
+_job_nnpack_warned = set()
+
+
 def _handle_job_line(job_id, line, remote=False):
     """One output line of a job's main.py: internal markers are consumed, the
     rest goes to the job's log. ``remote``: the line came from the worker."""
@@ -4614,6 +4617,19 @@ def _handle_job_line(job_id, line, remote=False):
         return
     if remote and job_id in jobs and len(jobs[job_id]['logs']) >= REMOTE_MAX_LOG_LINES:
         return        # a render prints a few hundred lines; the rest is noise
+
+    # Suppress continuous NNPACK hardware warning spam; keep only the first occurrence per instance
+    if "NNPACK.cpp" in decoded_line or "Could not initialize NNPACK" in decoded_line:
+        instance_key = str(job_id or "global")
+        if instance_key in _job_nnpack_warned:
+            return
+        _job_nnpack_warned.add(instance_key)
+        if len(_job_nnpack_warned) > 2000:
+            _job_nnpack_warned.clear()
+        decoded_line = (
+            f"{decoded_line} (Harmless PyTorch CPU notice; future duplicates in this instance suppressed)"
+        )
+
     print(f"📝 [Job Output] {decoded_line}")
     if job_id in jobs:
         jobs[job_id]['logs'].append(decoded_line)

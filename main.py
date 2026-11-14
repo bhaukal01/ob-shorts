@@ -3152,12 +3152,16 @@ async def get_local_history():
                              or clip.get("viral_hook_text")
                              or f"Clip {idx+1}")
                     download_url = v_url
+                    stream_url = v_url
                     try:
                         import s3_uploader
                         if s3_uploader.is_s3_enabled():
-                            s3_url = s3_uploader.get_presigned_download_url_for_clip(entry, fn)
-                            if s3_url:
-                                download_url = s3_url
+                            s3_dl = s3_uploader.get_presigned_download_url_for_clip(entry, fn)
+                            s3_st = s3_uploader.get_presigned_stream_url_for_clip(entry, fn)
+                            if s3_dl:
+                                download_url = s3_dl
+                            if s3_st:
+                                stream_url = s3_st
                     except Exception:
                         pass
                     videos.append({
@@ -3166,6 +3170,7 @@ async def get_local_history():
                         "clip_index": idx,
                         "title": title,
                         "video_url": v_url,
+                        "stream_url": stream_url,
                         "filename": fn,
                         "created_at": created_iso,
                         "download_url": download_url,
@@ -3248,6 +3253,82 @@ async def get_local_projects():
             except Exception:
                 continue
     return {"projects": projects}
+
+
+@router.get("/api/projects/{job_id}/clips")
+async def get_project_clips_endpoint(job_id: str):
+    out_dir = os.environ.get("OUTPUT_DIR", "output")
+    job_path = os.path.join(out_dir, job_id)
+    if not os.path.isdir(job_path) or os.path.exists(os.path.join(job_path, ".deleted")):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    meta_files = [f for f in os.listdir(job_path) if f.endswith("_metadata.json")]
+    if not meta_files:
+        raise HTTPException(status_code=404, detail="No metadata found for project")
+
+    try:
+        with open(os.path.join(job_path, meta_files[0]), "r", encoding="utf-8") as f:
+            meta = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read project metadata: {e}")
+
+    shorts = meta.get("shorts", [])
+    base_name = meta_files[0].replace('_metadata.json', '')
+    project_title = meta.get("video_title") or meta.get("title") or f"Project {job_id[:8]}"
+    created_iso = datetime.datetime.fromtimestamp(
+        os.path.getmtime(job_path), datetime.timezone.utc
+    ).isoformat()
+
+    import s3_uploader
+    s3_on = s3_uploader.is_s3_enabled()
+
+    clips_out = []
+    for idx, clip in enumerate(shorts):
+        canonical_fn = _canonical_clip_file(job_path, base_name, idx)
+        v_url = f"/videos/{job_id}/{canonical_fn}"
+        title = (clip.get("video_title_for_youtube_short")
+                 or clip.get("title")
+                 or clip.get("viral_hook_text")
+                 or f"Clip {idx+1}")
+        stream_url = v_url
+        download_url = v_url
+        if s3_on:
+            try:
+                s3_dl = s3_uploader.get_presigned_download_url_for_clip(job_id, canonical_fn)
+                s3_st = s3_uploader.get_presigned_stream_url_for_clip(job_id, canonical_fn)
+                if s3_dl:
+                    download_url = s3_dl
+                if s3_st:
+                    stream_url = s3_st
+            except Exception:
+                pass
+
+        duration = None
+        if clip.get("end") and clip.get("start") is not None:
+            try:
+                duration = round(float(clip["end"]) - float(clip["start"]), 1)
+            except Exception:
+                pass
+
+        clips_out.append({
+            "id": f"{job_id}_{idx}",
+            "job_id": job_id,
+            "clip_index": idx,
+            "title": title,
+            "filename": canonical_fn,
+            "video_url": v_url,
+            "stream_url": stream_url,
+            "download_url": download_url,
+            "created_at": created_iso,
+            "duration": duration,
+        })
+
+    return {
+        "job_id": job_id,
+        "title": project_title,
+        "clip_count": len(clips_out),
+        "clips": clips_out,
+    }
 
 
 @router.delete("/api/projects/{job_id}")

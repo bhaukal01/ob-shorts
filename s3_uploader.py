@@ -145,10 +145,20 @@ def upload_file_to_s3(file_path, bucket_name=None, s3_key=None):
         return False
 
 
+_presigned_cache = {}
+
+
 def get_presigned_download_url_for_clip(job_id, filename, expiration=86400):
     """Generate a direct presigned download URL for a clip from S3."""
     if not is_s3_enabled():
         return None
+    cache_key = (job_id, filename, "download")
+    now = time_module.time()
+    if cache_key in _presigned_cache:
+        url, exp = _presigned_cache[cache_key]
+        if now < exp - 300:
+            return url
+
     cfg = get_s3_config()
     s3_client = get_s3_client(cfg)
     if not s3_client:
@@ -156,7 +166,7 @@ def get_presigned_download_url_for_clip(job_id, filename, expiration=86400):
 
     s3_key = f"{job_id}/{filename}"
     try:
-        return s3_client.generate_presigned_url(
+        url = s3_client.generate_presigned_url(
             'get_object',
             Params={
                 'Bucket': cfg['bucket_name'],
@@ -165,8 +175,46 @@ def get_presigned_download_url_for_clip(job_id, filename, expiration=86400):
             },
             ExpiresIn=expiration
         )
+        if url:
+            _presigned_cache[cache_key] = (url, now + expiration)
+        return url
     except Exception as e:
         logger.error(f"Failed to generate presigned URL for {s3_key}: {e}")
+        return None
+
+
+def get_presigned_stream_url_for_clip(job_id, filename, expiration=86400):
+    """Generate a direct presigned playback/streaming URL for a clip from S3 with video/mp4 MIME."""
+    if not is_s3_enabled():
+        return None
+    cache_key = (job_id, filename, "stream")
+    now = time_module.time()
+    if cache_key in _presigned_cache:
+        url, exp = _presigned_cache[cache_key]
+        if now < exp - 300:
+            return url
+
+    cfg = get_s3_config()
+    s3_client = get_s3_client(cfg)
+    if not s3_client:
+        return None
+
+    s3_key = f"{job_id}/{filename}"
+    try:
+        url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': cfg['bucket_name'],
+                'Key': s3_key,
+                'ResponseContentType': 'video/mp4',
+            },
+            ExpiresIn=expiration
+        )
+        if url:
+            _presigned_cache[cache_key] = (url, now + expiration)
+        return url
+    except Exception as e:
+        logger.error(f"Failed to generate presigned stream URL for {s3_key}: {e}")
         return None
 
 

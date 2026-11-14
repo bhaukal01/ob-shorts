@@ -460,8 +460,8 @@ def gaming_inset_filtergraph(orig_w, orig_h, out_w, out_h, box, camera_ratio=0.3
 
     Dedicated layout for gaming streams/clips:
     1. The streamer's corner webcam is cropped and scaled full-width across the top (~720px tall).
-    2. The gameplay is scaled across the bottom section (~1200px tall), centered over an ambient
-       blurred background so no UI/HUD is clipped.
+    2. The gameplay is center-cropped equally from sides and scaled to fill the ENTIRE
+       remaining height below the facecam (~1200px tall), with zero fillers or letterbox bars.
     """
     box_w = max(2, box[2])
     box_h = max(2, box[3])
@@ -489,21 +489,34 @@ def gaming_inset_filtergraph(orig_w, orig_h, out_w, out_h, box, camera_ratio=0.3
     y -= y % 2
 
     game_area_h = out_h - cam_h
-    # Scale gameplay to full width
-    screen_h = int(round(out_w * orig_h / float(orig_w)))
-    screen_h -= screen_h % 2
-    screen_h = min(screen_h, game_area_h)
+    game_area_h -= game_area_h % 2
 
-    # Center gameplay vertically in the bottom slot
-    game_y = cam_h + max(0, (game_area_h - screen_h) // 2)
+    # Fit gameplay to fill the entire game_area_h without fillers
+    # Crop equally from sides (center-crop) since main game action is always in the middle
+    game_aspect = out_w / float(game_area_h)
+    orig_aspect = orig_w / float(orig_h)
+
+    if orig_aspect >= game_aspect:
+        # Standard wide 16:9 gameplay: crop left and right equally
+        crop_h = orig_h
+        crop_w = int(round(orig_h * game_aspect))
+        crop_x = max(0, (orig_w - crop_w) // 2)
+        crop_y = 0
+    else:
+        crop_w = orig_w
+        crop_h = int(round(orig_w / game_aspect))
+        crop_x = 0
+        crop_y = max(0, (orig_h - crop_h) // 2)
+
+    crop_w -= crop_w % 2
+    crop_h -= crop_h % 2
+    crop_x -= crop_x % 2
+    crop_y -= crop_y % 2
 
     return (
-        f"[0:v]split=3[bga][sa][ca];"
-        f"[bga]{blurred_backdrop(out_w, out_h, 14)}[bg];"
+        f"[0:v]split=2[sa][ca];"
         f"[ca]crop=w={w}:h={h}:x={x}:y={y},scale={out_w}:{cam_h}[cam];"
-        f"[sa]scale={out_w}:{screen_h}[game];"
-        f"[bg][cam]overlay=x=0:y=0[top_done];"
-        f"[top_done][game]overlay=x=0:y={game_y},"
-        f"setsar=1[v]"
+        f"[sa]crop=w={crop_w}:h={crop_h}:x={crop_x}:y={crop_y},scale={out_w}:{game_area_h}[game];"
+        f"[cam][game]vstack=inputs=2,setsar=1[v]"
     )
 

@@ -34,9 +34,9 @@ PILL_FONT_PATH = os.path.join(FONT_DIR, "Montserrat-ExtraBold.ttf")
 # browser preview use the same file. The size factor (share of the box width)
 # evens out their visual weight: Anton is condensed, Montserrat wide.
 HOOK_FONTS = {
-    "montserrat": (PILL_FONT_PATH, 0.064),
-    "anton": (os.path.join(FONT_DIR, "Anton-Regular.ttf"), 0.08),
-    "serif": (FONT_PATH, 0.05),
+    "montserrat": (PILL_FONT_PATH, 0.038),
+    "anton": (os.path.join(FONT_DIR, "Anton-Regular.ttf"), 0.045),
+    "serif": (FONT_PATH, 0.030),
 }
 
 # Codepoint ranges NotoSerif has no glyphs for (would render as tofu boxes).
@@ -237,9 +237,9 @@ def _draw_pills(lines, font, emoji_font, font_size, box_fill, text_fill, output_
     accents), so the stack reads as one block whatever the letters are.
     """
     lines = [ln for ln in lines if ln.strip()] or [" "]
-    pad_x = int(font_size * 0.48)
-    pad_y = int(font_size * 0.24)
-    radius = int(font_size * 0.36)
+    pad_x = int(font_size * 0.36)
+    pad_y = int(font_size * 0.18)
+    radius = int(font_size * 0.25)
     probe = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
     top, bottom = probe.textbbox((0, 0), "ÁÉÍÓÚÑgjpqy", font=font)[1::2]
     line_h = (bottom - top) + 2 * pad_y
@@ -543,8 +543,8 @@ def add_hook_to_video(video_path, text, output_path, position="top", font_scale=
         video_height = 1920
         
     # 2. Generate Image
-    # Box check: Don't let it be wider than 90% of screen
-    target_box_width = int(video_width * 0.9)
+    # Box check: Don't let it be wider than 78% of screen so it stays compact and sleek
+    target_box_width = int(video_width * 0.78)
     
     # Unique per invocation so parallel jobs can't overwrite each other's overlay.
     # The uuid alone guarantees that; the source name rides along only as a

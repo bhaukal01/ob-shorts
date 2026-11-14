@@ -208,3 +208,72 @@ def test_s3_test_endpoint_failure(client, monkeypatch):
     assert data["ok"] is False
     assert database.get_setting("s3_connection_status") == "failed"
 
+
+def test_nnpack_warning_suppression():
+    import app
+    jid = "test-job-nnpack"
+    app.jobs[jid] = {"logs": []}
+    app._job_nnpack_warned.discard(jid)
+
+    warning_line = "[W1114 18:55:03.144427539 NNPACK.cpp:56] Could not initialize NNPACK! Reason: Unsupported hardware."
+
+    # First occurrence should be recorded (with notice)
+    app._handle_job_line(jid, warning_line)
+    assert len(app.jobs[jid]["logs"]) == 1
+    assert "NNPACK.cpp:56" in app.jobs[jid]["logs"][0]
+    assert "future duplicates in this instance suppressed" in app.jobs[jid]["logs"][0]
+
+    # Repeated occurrences should be suppressed
+    for _ in range(10):
+        app._handle_job_line(jid, warning_line)
+    assert len(app.jobs[jid]["logs"]) == 1
+
+    # Normal log lines should still come through
+    app._handle_job_line(jid, "🎙️ Transcribing video...")
+    assert len(app.jobs[jid]["logs"]) == 2
+
+    # A different job instance gets its own first warning
+    jid2 = "test-job-nnpack-2"
+    app.jobs[jid2] = {"logs": []}
+    app._job_nnpack_warned.discard(jid2)
+    app._handle_job_line(jid2, warning_line)
+    assert len(app.jobs[jid2]["logs"]) == 1
+
+
+def test_project_clips_endpoint(client, tmp_path, monkeypatch):
+    import os, json
+    out_dir = str(tmp_path / "output")
+    job_id = "test-proj-123"
+    job_dir = os.path.join(out_dir, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    meta = {
+        "video_title": "My Awesome Game Short",
+        "shorts": [
+            {
+                "start": 10.0,
+                "end": 25.0,
+                "video_title_for_youtube_short": "Crazy Win",
+                "viral_hook_text": "Did you see that? 🤯",
+            }
+        ]
+    }
+    with open(os.path.join(job_dir, "video_metadata.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+
+    monkeypatch.setenv("OUTPUT_DIR", out_dir)
+
+    res = client.get(f"/api/projects/{job_id}/clips")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["job_id"] == job_id
+    assert data["title"] == "My Awesome Game Short"
+    assert data["clip_count"] == 1
+    clip = data["clips"][0]
+    assert clip["title"] == "Crazy Win"
+    assert "stream_url" in clip
+    assert "download_url" in clip
+    assert clip["duration"] == 15.0
+
+
+

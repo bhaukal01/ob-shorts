@@ -32,14 +32,11 @@ import threading
 # All heights are fractions of the frame height (0 = top edge).
 TOP_MARGIN = 0.06       # status bar / "Following | For you" tabs
 BOTTOM_UI = 0.80        # caption + username block of TikTok / Reels
-LEGACY_TOP = 0.20       # where position="top" has always drawn the hook
+LEGACY_TOP = 0.08       # sleek top spot, clears facecam and gameplay
 
-# Caption bands, measured on burned prod clips (1080x1920, AUTO_CAPTION_STYLE:
-# Anton 44, MarginV 43 of PlayResY 288): bottom captions span ~0.75-0.83,
-# seam captions ~0.47-0.54. Padded so a two-line block or the pop scale-up
-# still clears the hook.
-BOTTOM_CAPTIONS = (0.70, 0.88)
-SEAM_CAPTIONS = (0.42, 0.58)
+# Caption bands, measured on burned prod clips (1080x1920):
+BOTTOM_CAPTIONS = (0.76, 0.90)
+SEAM_CAPTIONS = (0.42, 0.52)
 
 # Score units: share of a face covered. 0.05 means moving the hook the whole
 # frame height away from 20% costs as much as covering 5% of a face, so the
