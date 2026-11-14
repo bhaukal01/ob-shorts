@@ -530,3 +530,42 @@ def test_repair_failure_keeps_parakeet_text(monkeypatch):
     t = _drift_transcript()
     assert tb._repair_script_drift(t, "/tmp/x.wav") == 0
     assert t["segments"][1]["text"].startswith("Тудей")
+
+
+def test_transcribe_progress_emits_5_pct_steps(capsys):
+    import transcribe_backends as tb
+    p = tb._TranscribeProgress(100.0)
+    p.update(3.0)
+    assert capsys.readouterr().out == ""
+    p.update(5.0)
+    out = capsys.readouterr().out
+    assert "🎙️ Transcribing… 5%" in out
+    p.update(12.0)
+    out = capsys.readouterr().out
+    assert "🎙️ Transcribing… 10%" in out
+    p.finish()
+    out = capsys.readouterr().out
+    assert "🎙️ Transcribing… 100%" in out
+
+
+def test_transcribe_progress_finish_forces_100(capsys):
+    import transcribe_backends as tb
+    p = tb._TranscribeProgress(100.0)
+    p.update(20.0)
+    capsys.readouterr()
+    p.finish()
+    assert "🎙️ Transcribing… 100%" in capsys.readouterr().out
+
+
+def test_whisper_beam_size_cpu_and_cuda_defaults(monkeypatch):
+    import subtitles as st
+    monkeypatch.delenv("WHISPER_BEAM_SIZE", raising=False)
+    monkeypatch.setenv("WHISPER_DEVICE", "cpu")
+    assert st.get_whisper_beam_size() == 1
+
+    monkeypatch.setenv("WHISPER_DEVICE", "cuda")
+    assert st.get_whisper_beam_size() == 5
+
+    monkeypatch.setenv("WHISPER_BEAM_SIZE", "3")
+    assert st.get_whisper_beam_size() == 3
+

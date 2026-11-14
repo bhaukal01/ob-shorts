@@ -132,26 +132,64 @@ class _NullGate:
 _NULL_GATE = _NullGate()
 
 
+def _probe_duration(media_path):
+    """Container duration via ffprobe in seconds; 0.0 on any failure."""
+    try:
+        res = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(media_path)],
+            capture_output=True, text=True, timeout=5,
+        )
+        val = float(res.stdout.strip())
+        return max(val, 0.0)
+    except Exception:
+        return 0.0
+
+
 class _TranscribeProgress:
-    """Emits '🎙️ Transcribing… NN% (Xs)' lines at 25% steps.
+    """Emits '🎙️ Transcribing… NN% (Xs)' lines at 5% steps with heartbeat fallback.
 
     These are the only transcription lines cloud users see (log_view keeps
-    them), so they must stay free of technical detail.
+    them), so they must stay responsive without flooding logs.
     """
 
     def __init__(self, total_seconds):
         self.total = max(float(total_seconds or 0), 0.0)
         self.started = time.time()
-        self.next_pct = 25
+        self.last_emit = self.started
+        self.step = 5  # Emit every 5% for responsive live feedback
+        self.next_pct = self.step
+        self.last_pct = 0
 
     def update(self, position_seconds):
-        if self.total <= 0:
-            return
-        pct = min(int(position_seconds / self.total * 100), 100)
-        while pct >= self.next_pct and self.next_pct <= 100:
+        now = time.time()
+        pos = float(position_seconds or 0)
+        if self.total > 0:
+            pct = min(int(pos / self.total * 100), 100)
+            while pct >= self.next_pct and self.next_pct <= 100:
+                elapsed = int(now - self.started)
+                print(f"🎙️ Transcribing… {self.next_pct}% ({elapsed}s)", flush=True)
+                self.last_pct = self.next_pct
+                self.last_emit = now
+                self.next_pct += self.step
+            # Heartbeat: if 30s elapsed without crossing next 5% boundary, print current %
+            if (now - self.last_emit) >= 30.0 and pct > self.last_pct:
+                elapsed = int(now - self.started)
+                print(f"🎙️ Transcribing… {pct}% ({elapsed}s)", flush=True)
+                self.last_pct = pct
+                self.last_emit = now
+        else:
+            # When total duration is unknown, emit heartbeat every 15s with processed position
+            if (now - self.last_emit) >= 15.0:
+                elapsed = int(now - self.started)
+                print(f"🎙️ Transcribing… ({int(pos)}s audio processed, {elapsed}s elapsed)", flush=True)
+                self.last_emit = now
+
+    def finish(self):
+        if self.last_pct < 100:
             elapsed = int(time.time() - self.started)
-            print(f"🎙️ Transcribing… {self.next_pct}% ({elapsed}s)", flush=True)
-            self.next_pct += 25
+            print(f"🎙️ Transcribing… 100% ({elapsed}s)", flush=True)
+            self.last_pct = 100
 
 # --- whisper singleton ------------------------------------------------------
 
@@ -178,7 +216,13 @@ def _get_whisper_model():
     with _whisper_lock:
         if _whisper_model is None or _whisper_key != key:
             from faster_whisper import WhisperModel
-            _whisper_model = WhisperModel(key[0], device=key[1], compute_type=key[2])
+            kwargs = {}
+            if cfg["device"] == "cpu":
+                import inspect
+                sig = inspect.signature(WhisperModel.__init__)
+                if "cpu_threads" in sig.parameters:
+                    kwargs["cpu_threads"] = int(os.environ.get("WHISPER_THREADS", "4"))
+            _whisper_model = WhisperModel(key[0], device=key[1], compute_type=key[2], **kwargs)
             _whisper_key = key
     return _whisper_model, cfg["device"]
 
@@ -194,15 +238,20 @@ def _run_whisper_once(media_path, **params):
     # being dropped underneath it.
     with gate:
         model, _device = _get_whisper_model()
+        if "beam_size" not in params or params["beam_size"] is None:
+            from subtitles import get_whisper_beam_size
+            params["beam_size"] = get_whisper_beam_size()
+        elif _whisper_device() == "cpu" and "WHISPER_BEAM_SIZE" not in os.environ and params.get("beam_size", 1) > 1:
+            params["beam_size"] = 1
+
         segments, info = model.transcribe(media_path, **params)
-        progress = _TranscribeProgress(getattr(info, "duration", 0))
+        dur = getattr(info, "duration", 0) or _probe_duration(media_path)
+        progress = _TranscribeProgress(dur)
         materialized = []
         for segment in segments:
             materialized.append(segment)
             progress.update(segment.end)
-        # VAD trims trailing silence, so the last segment can end short of the
-        # media duration — force the 100% line.
-        progress.update(progress.total)
+        progress.finish()
         return materialized, info
 
 
@@ -231,7 +280,15 @@ def run_whisper_transcription(media_path, **params):
 
 
 def _transcribe_with_whisper(media_path):
-    segments, info = run_whisper_transcription(media_path, **WHISPER_TRANSCRIBE_PARAMS)
+    params = dict(WHISPER_TRANSCRIBE_PARAMS)
+    if "WHISPER_BEAM_SIZE" in os.environ:
+        try:
+            params["beam_size"] = int(os.environ["WHISPER_BEAM_SIZE"])
+        except ValueError:
+            pass
+    elif _whisper_device() == "cpu":
+        params["beam_size"] = 1
+    segments, info = run_whisper_transcription(media_path, **params)
 
     out_segments = []
     text_parts = []

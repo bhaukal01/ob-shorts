@@ -1087,11 +1087,11 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             path = ((res.get('requested_downloads') or [{}])[0].get('filepath')
                     or res.get('filepath'))
             if path and os.path.exists(path):
-                print(f"🎧 Audio ready ahead of the video: {os.path.basename(path)}")
+                print(f"🎧 Audio ready ahead of the video: {os.path.basename(path)}", flush=True)
                 on_audio(path, info.get('duration'))
         except Exception as e:
             print(f"   ℹ️ Early audio skipped ({type(e).__name__}: {e}) — "
-                  f"transcribing once the video is in.")
+                  f"transcribing once the video is in.", flush=True)
 
     def _attempt(extractor_args, fmt, proxy, cookies=True):
         _dl_bytes["total"] = 0
@@ -2012,30 +2012,27 @@ def _free_gpu_cache():
 
 
 def transcribe_video(video_path):
-    print("🎙️  Transcribing video...")
-    from transcribe_backends import transcribe_media, release_models, host_asr_slot
+    print("🎙️  Transcribing video...", flush=True)
+    import contextlib
+    from transcribe_backends import transcribe_media, release_models, host_asr_slot, _whisper_device
 
     # At most ASR_HOST_SLOTS jobs transcribe on the GPU at once, host-wide.
-    # Inside the slot, the model's VRAM is handed back before the long render
-    # phase: a job process used to keep Parakeet (onnxruntime CUDA arena)
-    # resident until it exited. Measured in prod on 22-sep-2026, a job three
-    # clips into its render still held 5.9 GB of the 20 GB card; eight such
-    # jobs filled it and NVENC / TransNetV2 failed with CUDA OOM (30-60% of
-    # jobs failing per hour at peak). Nothing after this point transcribes.
-    with host_asr_slot():
+    # On CPU-only Whisper runs, bypass flocking so jobs do not contend for lock files.
+    slot_ctx = host_asr_slot() if _whisper_device() != "cpu" else contextlib.nullcontext()
+    with slot_ctx:
         try:
             transcript = transcribe_media(video_path)
         finally:
             try:
                 release_models()
             except Exception as e:
-                print(f"⚠️ [ASR] could not release models ({type(e).__name__}: {e})")
+                print(f"⚠️ [ASR] could not release models ({type(e).__name__}: {e})", flush=True)
 
     print(f"   Detected language '{transcript['language']}', "
-          f"{len(transcript['segments'])} segments")
+          f"{len(transcript['segments'])} segments", flush=True)
     for segment in transcript['segments']:
         # Print progress to keep user informed (and prevent timeouts feeling)
-        print(f"   [{segment['start']:.2f}s -> {segment['end']:.2f}s] {segment['text']}")
+        print(f"   [{segment['start']:.2f}s -> {segment['end']:.2f}s] {segment['text']}", flush=True)
 
     return transcript
 
@@ -3141,6 +3138,7 @@ if __name__ == '__main__':
         viewer_clips = twitch_signals.viewer_clips_for_job(args.url, 0)
 
     # 1. Get Input Video
+    early = None
     if args.url:
         # For multi-clip runs, treat --output as an OUTPUT DIRECTORY (create it if needed).
         # For whole-video runs (--skip-analysis), --output can be a file path.
@@ -3167,13 +3165,14 @@ if __name__ == '__main__':
 
         def _early_work(audio_path, audio_duration):
             try:
+                print(f"🎙️ [Early ASR] Transcribing audio in background ({os.path.basename(audio_path)})...", flush=True)
                 t = transcribe_video(audio_path)
                 early["transcript"] = t
                 if audio_duration and not speech_is_sparse(t, audio_duration):
                     early["clips"] = get_viral_clips(t, audio_duration,
                                                      viewer_clips=viewer_clips)
             except Exception as e:
-                print(f"   ℹ️ Early transcription skipped ({type(e).__name__}: {e}).")
+                print(f"   ℹ️ Early transcription skipped ({type(e).__name__}: {e}).", flush=True)
                 early["transcript"] = early["clips"] = None
             finally:
                 early["done"].set()
@@ -3185,8 +3184,13 @@ if __name__ == '__main__':
         def _on_audio(audio_path, audio_duration):
             with early["lock"]:
                 if early["abandoned"]:
+                    try:
+                        os.remove(audio_path)
+                    except OSError:
+                        pass
                     return
                 early["started"] = True
+            print(f"🎧 Starting background transcription of audio ({os.path.basename(audio_path)})...", flush=True)
             threading.Thread(target=_early_work, args=(audio_path, audio_duration),
                              daemon=True).start()
 
@@ -3241,7 +3245,7 @@ if __name__ == '__main__':
         input_video = cap_source_duration(input_video, os.environ["SOURCE_CAP_MINUTES"],
                                           safety=True)
         # The cut rewrites the file in place: a new size/mtime means it happened.
-        if _stamp(input_video) != _before and globals().get("early") is not None:
+        if _stamp(input_video) != _before and early is not None:
             early["invalid"] = True  # its words cover the part that was cut off
 
     if args.prepare_only:
@@ -3332,43 +3336,51 @@ if __name__ == '__main__':
             except Exception as e:
                 print(f"⚠️ Could not use precomputed transcript ({e}) — transcribing normally.")
                 transcript = None
-        early_state = globals().get("early")
+        early_state = early
         if transcript is None and early_state is not None:
             with early_state["lock"]:
-                early_state["abandoned"] = True  # a late audio would only duplicate work
                 started = early_state["started"]
+                if not started:
+                    # Video finished downloading before early audio was ready; abandon background job
+                    early_state["abandoned"] = True
             if started and not early_state["invalid"]:
-                early_state["done"].wait()
+                print("⏳ Waiting for audio transcription to complete...", flush=True)
+                wait_start = time.time()
+                while not early_state["done"].wait(timeout=10.0):
+                    wait_elapsed = int(time.time() - wait_start)
+                    if wait_elapsed > 1800:
+                        print("⚠️ Early transcription timed out after 30 minutes — falling back.", flush=True)
+                        break
                 if early_state["transcript"] is not None:
                     transcript = early_state["transcript"]
                     print(f"♻️ Using the transcript made while the video downloaded "
-                          f"({len(transcript['segments'])} segments).")
+                          f"({len(transcript['segments'])} segments).", flush=True)
                     save_transcript_checkpoint(output_dir, transcript, input_video, duration)
         if transcript is None:
             transcript = load_transcript_checkpoint(output_dir, input_video, duration)
             if transcript is not None:
                 print(f"♻️ Reusing the transcript from the interrupted run "
-                      f"({len(transcript['segments'])} segments) — skipping transcription.")
+                      f"({len(transcript['segments'])} segments) — skipping transcription.", flush=True)
         if transcript is None:
             try:
                 transcript = transcribe_video(input_video)
                 save_transcript_checkpoint(output_dir, transcript, input_video, duration)
             except NoAudioError as e:
-                print(f"🔇 {e} — switching to visual analysis.")
+                print(f"🔇 {e} — switching to visual analysis.", flush=True)
 
         # Music-only or wordless footage transcribes to a handful of words.
         # Clip it by what is on screen instead, like a video with no audio.
         if transcript is not None and speech_is_sparse(transcript, duration):
             n_words = sum(len((sg.get("text") or "").split()) for sg in transcript["segments"])
             print(f"🔇 Only {n_words} word(s) of speech in {duration:.0f}s — "
-                  f"switching to visual analysis.")
+                  f"switching to visual analysis.", flush=True)
             transcript = None
 
         # 4. Gemini Analysis (transcript-driven, or vision for silent videos)
         early_clips = (early_state or {}).get("clips") if early_state else None
         if (transcript is not None and early_clips
                 and transcript is early_state["transcript"]):
-            print("♻️ Using the clips Gemini picked while the video downloaded.")
+            print("♻️ Using the clips Gemini picked while the video downloaded.", flush=True)
             clips_data = early_clips
         elif transcript is not None:
             clips_data = get_viral_clips(transcript, duration, viewer_clips=viewer_clips)

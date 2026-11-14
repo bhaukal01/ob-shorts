@@ -31,10 +31,21 @@ def get_whisper_config():
     }
 
 
+def get_whisper_beam_size():
+    """Return default beam size: 1 on CPU (greedy, 4-5x faster), 5 on GPU."""
+    dev = os.environ.get("WHISPER_DEVICE", "cpu").strip().lower()
+    default_beam = 1 if dev == "cpu" else 5
+    try:
+        return int(os.environ.get("WHISPER_BEAM_SIZE", default_beam))
+    except (TypeError, ValueError):
+        return default_beam
+
+
 # Decode params shared by both transcription paths. condition_on_previous_text
 # is off to avoid repetition/hallucination loops; vad_filter drops silence.
+# On CPU, greedy decoding (beam_size=1) is standard and delivers ~4-5x faster transcription.
 WHISPER_TRANSCRIBE_PARAMS = {
-    "beam_size": 5,
+    "beam_size": get_whisper_beam_size(),
     "vad_filter": True,
     "condition_on_previous_text": False,
     "word_timestamps": True,

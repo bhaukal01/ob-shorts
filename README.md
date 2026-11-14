@@ -105,6 +105,13 @@ OMP_NUM_THREADS=2
 OPENBLAS_NUM_THREADS=2
 MKL_NUM_THREADS=2
 
+# Speech-to-Text Performance (Whisper)
+WHISPER_MODEL=small
+WHISPER_DEVICE=cpu
+WHISPER_COMPUTE=int8
+WHISPER_BEAM_SIZE=1
+WHISPER_THREADS=4
+
 # Optional Default LLM Provider (Can also be set in Web UI Settings)
 LLM_PROVIDER=openai
 LLM_BASE_URL=https://api.onebyt.live/v1
