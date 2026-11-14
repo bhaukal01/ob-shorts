@@ -569,3 +569,96 @@ def test_whisper_beam_size_cpu_and_cuda_defaults(monkeypatch):
     monkeypatch.setenv("WHISPER_BEAM_SIZE", "3")
     assert st.get_whisper_beam_size() == 3
 
+
+# --- Groq Whisper API unit tests ------------------------------------------
+
+def test_normalize_groq_language():
+    assert tb._normalize_groq_language("hindi") == "hi"
+    assert tb._normalize_groq_language("english") == "en"
+    assert tb._normalize_groq_language("hi") == "hi"
+    assert tb._normalize_groq_language("EN") == "en"
+    assert tb._normalize_groq_language("auto") is None
+    assert tb._normalize_groq_language(None) is None
+
+
+def test_transcribe_with_groq_mock(monkeypatch, tmp_path):
+    # Create a dummy audio file
+    fake_audio = tmp_path / "test.mp4"
+    fake_audio.write_text("dummy")
+
+    dummy_audio = tmp_path / "dummy.mp3"
+    dummy_audio.write_bytes(b"dummy mp3 data")
+    monkeypatch.setattr(tb, "_extract_compressed_audio_for_groq", lambda path: str(dummy_audio))
+
+    fake_groq_response = {
+        "text": "नमस्ते दोस्तों आज हम बात करेंगे।",
+        "language": "hindi",
+        "segments": [
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 2.5,
+                "text": "नमस्ते दोस्तों",
+                "words": [
+                    {"word": "नमस्ते", "start": 0.0, "end": 0.8},
+                    {"word": "दोस्तों", "start": 0.9, "end": 2.2},
+                ]
+            },
+            {
+                "id": 1,
+                "start": 2.6,
+                "end": 4.8,
+                "text": "आज हम बात करेंगे।",
+                "words": [
+                    {"word": "आज", "start": 2.6, "end": 3.0},
+                    {"word": "हम", "start": 3.1, "end": 3.5},
+                    {"word": "बात", "start": 3.6, "end": 4.0},
+                    {"word": "करेंगे।", "start": 4.1, "end": 4.7},
+                ]
+            }
+        ]
+    }
+
+    class DummyResponse:
+        status_code = 200
+        def json(self):
+            return fake_groq_response
+
+    class DummySession:
+        def post(self, url, headers=None, data=None, files=None, timeout=None):
+            return DummyResponse()
+
+    monkeypatch.setattr(tb.requests, "post", DummySession().post)
+
+    result = tb._transcribe_with_groq(str(fake_audio), api_key="gsk_test123", model="whisper-large-v3", language="hi")
+    assert result["language"] == "hi"
+    assert result["text"] == "नमस्ते दोस्तों आज हम बात करेंगे।"
+    assert len(result["segments"]) == 2
+    assert result["segments"][0]["words"][0]["word"] == " नमस्ते"
+    assert result["segments"][0]["words"][0]["start"] == 0.0
+    assert result["segments"][0]["words"][0]["end"] == 0.8
+
+
+def test_transcribe_media_groq_fallback(monkeypatch, tmp_path):
+    fake_audio = tmp_path / "test.mp4"
+    fake_audio.write_text("dummy")
+
+    # Set DB setting to groq
+    import database
+    monkeypatch.setattr(database, "get_setting", lambda k, default=None: "groq" if k == "transcription_provider" else "gsk_dummy" if k == "groq_api_key" else default)
+    monkeypatch.setattr(tb, "_has_audio_stream", lambda path: True)
+
+    # Groq fails with an exception
+    def failing_groq(*args, **kwargs):
+        raise RuntimeError("Groq rate limit exceeded")
+
+    monkeypatch.setattr(tb, "_transcribe_with_groq", failing_groq)
+
+    # Local fallback succeeds
+    fake_local_res = {"text": "fallback text", "segments": [], "language": "en"}
+    monkeypatch.setattr(tb, "_transcribe_with_whisper", lambda *args, **kwargs: fake_local_res)
+
+    result = tb.transcribe_media(str(fake_audio))
+    assert result["text"] == "fallback text"
+
+

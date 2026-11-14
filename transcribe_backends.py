@@ -28,6 +28,7 @@ with other models on the host, so loads can OOM under load).
 import os
 import re
 import subprocess
+import requests
 import sys
 import tempfile
 import threading
@@ -786,6 +787,127 @@ def _has_audio_stream(media_path) -> bool:
         return True  # probe failed — don't block, let the backend try
 
 
+def _extract_compressed_audio_for_groq(media_path):
+    """Extract compressed 16kHz mono MP3 for Groq upload (stays well below 25MB limit)."""
+    fd, tmp_audio = tempfile.mkstemp(suffix=".mp3", prefix="groq_asr_")
+    os.close(fd)
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error", "-i", str(media_path),
+        "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", "-f", "mp3", tmp_audio,
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=600)
+    return tmp_audio
+
+
+def _normalize_groq_language(lang: str) -> str | None:
+    if not lang:
+        return None
+    l = lang.strip().lower()
+    if l in ("auto", "none", "null", ""):
+        return None
+    mapping = {
+        "hindi": "hi", "english": "en", "spanish": "es", "french": "fr",
+        "german": "de", "portuguese": "pt", "italian": "it", "russian": "ru",
+        "japanese": "ja", "chinese": "zh", "korean": "ko", "arabic": "ar",
+        "bengali": "bn", "marathi": "mr", "telugu": "te", "tamil": "ta",
+        "gujarati": "gu", "punjabi": "pa", "urdu": "ur",
+    }
+    return mapping.get(l, l[:2] if len(l) >= 2 else l)
+
+
+def _transcribe_with_groq(media_path, api_key=None, model=None, language=None):
+    """Transcribe using Groq Cloud Whisper API (whisper-large-v3)."""
+    if not api_key:
+        try:
+            import database
+            api_key = database.get_setting("groq_api_key")
+        except Exception:
+            pass
+    if not api_key:
+        api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("Groq API key not configured")
+
+    if not model:
+        try:
+            import database
+            model = database.get_setting("groq_whisper_model")
+        except Exception:
+            pass
+    if not model:
+        model = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3").strip()
+
+    audio_file = _extract_compressed_audio_for_groq(media_path)
+    try:
+        with open(audio_file, "rb") as f:
+            files = {"file": (os.path.basename(audio_file), f, "audio/mpeg")}
+            data = [
+                ("model", model),
+                ("response_format", "verbose_json"),
+                ("timestamp_granularities[]", "word"),
+                ("timestamp_granularities[]", "segment"),
+            ]
+            norm_lang = _normalize_groq_language(language)
+            if norm_lang:
+                data.append(("language", norm_lang))
+            headers = {"Authorization": f"Bearer {api_key}"}
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=300.0,
+            )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Groq API HTTP {resp.status_code}: {resp.text}")
+
+        res = resp.json()
+        raw_segments = res.get("segments") or []
+        raw_words = res.get("words") or []
+        lang = _normalize_groq_language(res.get("language") or "hi") or "en"
+
+        out_segments = []
+        for seg in raw_segments:
+            seg_start = float(seg.get("start", 0.0))
+            seg_end = float(seg.get("end", 0.0))
+            seg_text = seg.get("text", "")
+
+            # Use words directly in segment if present, else filter from top-level words
+            seg_words = seg.get("words")
+            if not seg_words and raw_words:
+                seg_words = [
+                    w for w in raw_words
+                    if (float(w.get("start", 0.0)) >= seg_start - 0.05 and float(w.get("end", 0.0)) <= seg_end + 0.1)
+                ]
+
+            formatted_words = []
+            for w in (seg_words or []):
+                word_str = str(w.get("word") or "")
+                formatted_words.append({
+                    "word": word_str if word_str.startswith(" ") else (" " + word_str),
+                    "start": float(w.get("start", 0.0)),
+                    "end": float(w.get("end", 0.0)),
+                })
+
+            out_segments.append({
+                "start": seg_start,
+                "end": seg_end,
+                "text": seg_text,
+                "words": merge_continuation_words(formatted_words),
+            })
+
+        return {
+            "text": res.get("text", "").strip(),
+            "language": lang,
+            "segments": out_segments,
+        }
+    finally:
+        try:
+            os.remove(audio_file)
+        except OSError:
+            pass
+
+
 def transcribe_media(media_path):
     """Transcribe with the configured backend, falling back to whisper."""
     # Silent videos (AI-generated clips, muted screen recordings) have no audio
@@ -796,6 +918,35 @@ def transcribe_media(media_path):
         raise NoAudioError(
             "This video has no audio track. OpenShorts finds viral moments from "
             "speech, so it needs a video with audio.")
+
+    # 1. Check if Groq Cloud Whisper API is selected or configured
+    provider = os.environ.get("TRANSCRIPTION_PROVIDER", "").strip().lower()
+    try:
+        import database
+        db_provider = database.get_setting("transcription_provider")
+        if db_provider:
+            provider = db_provider.strip().lower()
+    except Exception:
+        pass
+
+    groq_key = None
+    try:
+        import database
+        groq_key = database.get_setting("groq_api_key")
+    except Exception:
+        pass
+    if not groq_key:
+        groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+
+    if provider == "groq" or (provider != "local" and groq_key):
+        try:
+            print("🎙️ [ASR] Transcribing with Groq Cloud Whisper API (whisper-large-v3)...", flush=True)
+            transcript = _transcribe_with_groq(media_path, api_key=groq_key)
+            if transcript and transcript.get("segments"):
+                print(f"🎙️ [ASR] Groq Whisper ok: lang={transcript['language']} segments={len(transcript['segments'])}", flush=True)
+                return transcript
+        except Exception as e:
+            print(f"⚠️ [ASR] Groq Whisper failed ({type(e).__name__}: {e}) — falling back to local whisper", flush=True)
 
     backend = os.environ.get("TRANSCRIBE_BACKEND", "whisper").strip().lower()
 

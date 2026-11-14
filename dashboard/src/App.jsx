@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import McpConnectCard from './components/McpConnectCard';
@@ -327,6 +327,11 @@ function App() {
     upload_post_api_key: '',
     public_api_url: '',
     public_frontend_url: '',
+    transcription_provider: 'local',
+    groq_api_key: '',
+    groq_whisper_model: 'whisper-large-v3',
+    llm_connection_status: '',
+    groq_connection_status: '',
   });
   const [socialStatus, setSocialStatus] = useState({
     youtube: { connected: false, channel_id: '', channel_title: '', has_credentials: false, client_id: '' },
@@ -339,6 +344,11 @@ function App() {
   const [fetchModelsError, setFetchModelsError] = useState('');
   const [manualModelInput, setManualModelInput] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [testingLlm, setTestingLlm] = useState(false);
+  const [llmTestMsg, setLlmTestMsg] = useState(null);
+  const [testingGroq, setTestingGroq] = useState(false);
+  const [groqTestMsg, setGroqTestMsg] = useState(null);
+  const [showGroqKey, setShowGroqKey] = useState(false);
 
   // YouTube OAuth Credentials
   const [ytClientId, setYtClientId] = useState('');
@@ -892,6 +902,84 @@ function App() {
       setFetchModelsError(err.message || 'Network error fetching models');
     } finally {
       setFetchingModels(false);
+    }
+  };
+
+  const handleTestLlmConnection = async () => {
+    if (!backendSettings.llm_base_url || !backendSettings.llm_model) {
+      setLlmTestMsg({ ok: false, message: 'Please enter API Base URL and Model first.' });
+      return;
+    }
+    setTestingLlm(true);
+    setLlmTestMsg(null);
+    try {
+      const res = await apiFetch('/api/llm/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_url: backendSettings.llm_base_url,
+          api_key: backendSettings.llm_api_key || null,
+          model: backendSettings.llm_model,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setLlmTestMsg({ ok: true, message: data.message });
+        const updated = { ...backendSettings, llm_connection_status: 'connected' };
+        setBackendSettings(updated);
+        saveBackendSettings(updated);
+      } else {
+        setLlmTestMsg({ ok: false, message: data.message || data.detail || 'Connection test failed.' });
+        const updated = { ...backendSettings, llm_connection_status: 'failed' };
+        setBackendSettings(updated);
+        saveBackendSettings(updated);
+      }
+    } catch (err) {
+      setLlmTestMsg({ ok: false, message: err.message || 'Network error testing connection.' });
+      const updated = { ...backendSettings, llm_connection_status: 'failed' };
+      setBackendSettings(updated);
+      saveBackendSettings(updated);
+    } finally {
+      setTestingLlm(false);
+    }
+  };
+
+  const handleTestGroqConnection = async () => {
+    if (!backendSettings.groq_api_key) {
+      setGroqTestMsg({ ok: false, message: 'Please enter a Groq API Key first.' });
+      return;
+    }
+    setTestingGroq(true);
+    setGroqTestMsg(null);
+    try {
+      const res = await apiFetch('/api/transcription/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'groq',
+          api_key: backendSettings.groq_api_key,
+          model: backendSettings.groq_whisper_model || 'whisper-large-v3',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setGroqTestMsg({ ok: true, message: data.message });
+        const updated = { ...backendSettings, groq_connection_status: 'connected' };
+        setBackendSettings(updated);
+        saveBackendSettings(updated);
+      } else {
+        setGroqTestMsg({ ok: false, message: data.message || data.detail || 'Groq connection failed.' });
+        const updated = { ...backendSettings, groq_connection_status: 'failed' };
+        setBackendSettings(updated);
+        saveBackendSettings(updated);
+      }
+    } catch (err) {
+      setGroqTestMsg({ ok: false, message: err.message || 'Network error connecting to Groq.' });
+      const updated = { ...backendSettings, groq_connection_status: 'failed' };
+      setBackendSettings(updated);
+      saveBackendSettings(updated);
+    } finally {
+      setTestingGroq(false);
     }
   };
 
@@ -1962,9 +2050,16 @@ function App() {
                       <p className="text-xs text-muted">Select the LLM engine for viral moment picking and transcription analysis</p>
                     </div>
                   </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${backendSettings.llm_provider === 'openai' ? 'bg-brass/10 text-brass border border-brass/30' : 'bg-paper3 text-ink2 border border-rule'}`}>
-                    Active: {backendSettings.llm_provider === 'openai' ? 'OpenAI-Compatible' : 'Google Gemini'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {backendSettings.llm_provider === 'openai' && backendSettings.llm_connection_status === 'connected' && (
+                      <span className="badge-ok flex items-center gap-1 text-xs">
+                        <Check size={12} /> Connected &amp; Verified
+                      </span>
+                    )}
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${backendSettings.llm_provider === 'openai' ? 'bg-brass/10 text-brass border border-brass/30' : 'bg-paper3 text-ink2 border border-rule'}`}>
+                      Active: {backendSettings.llm_provider === 'openai' ? 'OpenAI-Compatible' : 'Google Gemini'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Provider Selector Tabs */}
@@ -2094,6 +2189,37 @@ function App() {
                         <strong className="text-ink font-medium">Local Face Tracking Activated:</strong> When using an OpenAI-compatible provider, OpenShorts automatically disables Google GenAI layout calls and tracks active speakers using local OpenCV &amp; MediaPipe (<code className="text-brass">crop.py</code>).
                       </div>
                     </div>
+
+                    {/* Test Connection Button & Persistent Status */}
+                    <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-rule/50">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleTestLlmConnection}
+                          disabled={testingLlm || !backendSettings.llm_base_url || !backendSettings.llm_model}
+                          className="btn-quiet py-2 px-3 text-xs flex items-center justify-center gap-1.5 shrink-0"
+                          title="Sends a test ping to {base_url}/chat/completions to verify credentials"
+                        >
+                          <Zap size={13} className={testingLlm ? 'animate-spin text-brass' : 'text-brass'} />
+                          {testingLlm ? 'Testing Connection...' : 'Test Connection'}
+                        </button>
+                        {backendSettings.llm_connection_status === 'connected' && (
+                          <span className="badge-ok flex items-center gap-1.5 text-xs py-1 px-2.5">
+                            <Check size={12} /> Connected &amp; Verified
+                          </span>
+                        )}
+                        {backendSettings.llm_connection_status === 'failed' && (
+                          <span className="badge-warn flex items-center gap-1.5 text-xs py-1 px-2.5 text-danger">
+                            <AlertCircle size={12} /> Connection Failed
+                          </span>
+                        )}
+                      </div>
+                      {llmTestMsg && (
+                        <p className={`text-xs flex items-center gap-1.5 ${llmTestMsg.ok ? 'text-ok' : 'text-danger'}`}>
+                          {llmTestMsg.ok ? <Check size={13} /> : <AlertCircle size={13} />} {llmTestMsg.message}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -2129,6 +2255,165 @@ function App() {
                     className="btn-primary py-2 px-5 text-xs flex items-center gap-2"
                   >
                     <Check size={14} /> Save AI Configuration
+                  </button>
+                </div>
+              </div>
+
+              {/* SECTION: Transcription & Speech-to-Text */}
+              <div className="card p-5 sm:p-6 space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
+                      <Mic size={18} className="text-brass" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-medium text-ink lowercase">Transcription &amp; Speech-to-Text (ASR)</h2>
+                      <p className="text-xs text-muted">Speech recognition engine for generating word-level subtitle timing and transcripts</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {backendSettings.transcription_provider === 'groq' && backendSettings.groq_connection_status === 'connected' && (
+                      <span className="badge-ok flex items-center gap-1 text-xs">
+                        <Check size={12} /> Connected &amp; Verified
+                      </span>
+                    )}
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${backendSettings.transcription_provider === 'groq' ? 'bg-brass/10 text-brass border border-brass/30' : 'bg-paper3 text-ink2 border border-rule'}`}>
+                      Active: {backendSettings.transcription_provider === 'groq' ? 'Groq Cloud Whisper' : 'Local CPU Whisper'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Provider Selector Tabs */}
+                <div className="grid grid-cols-2 gap-3 p-1 bg-paper3 rounded-input border border-rule">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...backendSettings, transcription_provider: 'groq' };
+                      setBackendSettings(updated);
+                      saveBackendSettings(updated);
+                    }}
+                    className={`py-2 px-3 text-xs sm:text-sm font-medium rounded-input transition-all flex items-center justify-center gap-2 ${backendSettings.transcription_provider === 'groq' ? 'bg-paper text-ink shadow-sm' : 'text-muted hover:text-ink2'}`}
+                  >
+                    <Zap size={14} className="text-brass" /> Groq Cloud Whisper (Recommended)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...backendSettings, transcription_provider: 'local' };
+                      setBackendSettings(updated);
+                      saveBackendSettings(updated);
+                    }}
+                    className={`py-2 px-3 text-xs sm:text-sm font-medium rounded-input transition-all flex items-center justify-center gap-2 ${backendSettings.transcription_provider === 'local' ? 'bg-paper text-ink shadow-sm' : 'text-muted hover:text-ink2'}`}
+                  >
+                    <Cpu size={14} /> Local CPU Whisper (Offline)
+                  </button>
+                </div>
+
+                {/* Groq Cloud Whisper Fields */}
+                {backendSettings.transcription_provider === 'groq' && (
+                  <div className="space-y-4 pt-2">
+                    <div className="p-3 bg-paper3/60 border border-rule rounded-input text-xs text-muted flex items-start gap-2.5">
+                      <Zap size={16} className="text-brass shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-ink font-medium">Ultra-Fast Whisper Large V3:</strong> Groq provides ~200x real-time transcription with precise word timestamps. High-accuracy transcription for Hindi slang, mixed Hinglish, and fast speech with zero CPU overhead on your server.
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                        Groq API Key <span className="text-warn">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showGroqKey ? 'text' : 'password'}
+                          value={backendSettings.groq_api_key || ''}
+                          onChange={(e) => setBackendSettings({ ...backendSettings, groq_api_key: e.target.value })}
+                          placeholder="gsk_..."
+                          className="input-field text-sm font-mono w-full pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGroqKey(!showGroqKey)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors p-1"
+                        >
+                          {showGroqKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-muted">
+                        Get your API key from <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-brass underline">console.groq.com</a>. Configured directly in settings with no need for server .env edits.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                        Whisper Model
+                      </label>
+                      <select
+                        value={backendSettings.groq_whisper_model || 'whisper-large-v3'}
+                        onChange={(e) => setBackendSettings({ ...backendSettings, groq_whisper_model: e.target.value })}
+                        className="input-field text-sm font-mono w-full bg-paper3"
+                      >
+                        <option value="whisper-large-v3">whisper-large-v3 (Default — Highest multilingual &amp; Hindi accuracy)</option>
+                        <option value="whisper-large-v3-turbo">whisper-large-v3-turbo (Turbo — Ultra-fast latency)</option>
+                      </select>
+                      <p className="text-[11px] text-muted">
+                        Both models return word-level timestamps used for animated subtitles and clip cutting.
+                      </p>
+                    </div>
+
+                    {/* Test Groq Connection Button & Persistent Status */}
+                    <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-rule/50">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleTestGroqConnection}
+                          disabled={testingGroq || !backendSettings.groq_api_key}
+                          className="btn-quiet py-2 px-3 text-xs flex items-center justify-center gap-1.5 shrink-0"
+                          title="Queries Groq API to verify your API key"
+                        >
+                          <Zap size={13} className={testingGroq ? 'animate-spin text-brass' : 'text-brass'} />
+                          {testingGroq ? 'Testing Groq Connection...' : 'Test Connection'}
+                        </button>
+                        {backendSettings.groq_connection_status === 'connected' && (
+                          <span className="badge-ok flex items-center gap-1.5 text-xs py-1 px-2.5">
+                            <Check size={12} /> Connected &amp; Verified
+                          </span>
+                        )}
+                        {backendSettings.groq_connection_status === 'failed' && (
+                          <span className="badge-warn flex items-center gap-1.5 text-xs py-1 px-2.5 text-danger">
+                            <AlertCircle size={12} /> Connection Failed
+                          </span>
+                        )}
+                      </div>
+                      {groqTestMsg && (
+                        <p className={`text-xs flex items-center gap-1.5 ${groqTestMsg.ok ? 'text-ok' : 'text-danger'}`}>
+                          {groqTestMsg.ok ? <Check size={13} /> : <AlertCircle size={13} />} {groqTestMsg.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Local CPU Whisper Info */}
+                {backendSettings.transcription_provider === 'local' && (
+                  <div className="space-y-3 pt-2">
+                    <div className="p-3 bg-paper3/60 border border-rule rounded-input text-xs text-muted flex items-start gap-2.5">
+                      <Cpu size={16} className="text-ink2 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-ink font-medium">Local CPU Whisper (faster-whisper):</strong> Runs directly on your Docker host using CPU quantization (<code className="text-brass">int8</code>). No external API key required, but uses server CPU and takes longer for long videos.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => saveBackendSettings()}
+                    disabled={settingsLoading}
+                    className="btn-primary py-2 px-5 text-xs flex items-center gap-2"
+                  >
+                    <Check size={14} /> Save Transcription Configuration
                   </button>
                 </div>
               </div>

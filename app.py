@@ -5716,6 +5716,15 @@ async def process_endpoint(
     if db_model:
         env["LLM_MODEL"] = db_model
 
+    db_trans_prov = database.get_setting("transcription_provider") or "local"
+    env["TRANSCRIPTION_PROVIDER"] = db_trans_prov
+    db_groq_key = database.get_setting("groq_api_key")
+    if db_groq_key:
+        env["GROQ_API_KEY"] = db_groq_key
+    db_groq_model = database.get_setting("groq_whisper_model")
+    if db_groq_model:
+        env["GROQ_WHISPER_MODEL"] = db_groq_model
+
     if api_key:
         env["GEMINI_API_KEY"] = api_key # Override with key from request
     elif database.get_setting("gemini_api_key"):

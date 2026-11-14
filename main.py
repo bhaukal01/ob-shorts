@@ -2571,6 +2571,18 @@ class ModelsRequest(BaseModel):
     api_key: Optional[str] = None
 
 
+class LLMTestRequest(BaseModel):
+    base_url: str
+    api_key: Optional[str] = None
+    model: str
+
+
+class TranscriptionTestRequest(BaseModel):
+    provider: str = "groq"
+    api_key: Optional[str] = None
+    model: Optional[str] = "whisper-large-v3"
+
+
 class YouTubeCredentialsRequest(BaseModel):
     client_id: str
     client_secret: str
@@ -2655,8 +2667,26 @@ async def get_settings_endpoint():
     yt_connected = bool(yt.get("access_token") or yt.get("refresh_token"))
     ig_connected = bool(ig.get("access_token") and ig.get("account_id"))
 
+    social = {
+        "youtube": {
+            "connected": yt_connected,
+            "channel_title": yt.get("account_name", ""),
+            "client_id": yt.get("client_id", ""),
+        },
+        "instagram": {
+            "connected": ig_connected,
+            "account_name": ig.get("account_name", ""),
+            "account_id": ig.get("account_id", ""),
+        },
+    }
+
+    s.pop("settings", None)
+    s.pop("social", None)
+
     return {
         **s,
+        "settings": s,
+        "social": social,
         "youtube_connected": yt_connected,
         "youtube_account_name": yt.get("account_name", ""),
         "youtube_client_id": yt.get("client_id", ""),
@@ -2668,7 +2698,8 @@ async def get_settings_endpoint():
 
 @router.put("/api/settings")
 async def update_settings_endpoint(payload: Dict[str, Any]):
-    clean = {k: v for k, v in payload.items() if not k.endswith("_connected")}
+    to_save = payload.get("settings", payload)
+    clean = {k: v for k, v in to_save.items() if not k.endswith("_connected") and k not in ("settings", "social")}
     database.update_settings(clean)
     return await get_settings_endpoint()
 
@@ -2680,6 +2711,103 @@ async def get_llm_models_endpoint(req: ModelsRequest):
         return {"models": models}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/llm/test")
+async def test_llm_endpoint(req: LLMTestRequest):
+    base_url = (req.base_url or "").strip().rstrip("/")
+    api_key = (req.api_key or "").strip()
+    model = (req.model or "").strip()
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Base URL is required")
+    if not model:
+        raise HTTPException(status_code=400, detail="Model name is required")
+
+    url = f"{base_url}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "Respond with 'ok'."}],
+        "max_tokens": 5,
+    }
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code >= 400:
+                database.set_setting("llm_connection_status", "failed")
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "message": f"HTTP {resp.status_code}: {resp.text[:300]}",
+                }
+            data = resp.json()
+            if "choices" in data or "id" in data:
+                database.set_setting("llm_connection_status", "connected")
+                return {
+                    "ok": True,
+                    "status": "connected",
+                    "message": f"Successfully connected to {model} at {base_url}!",
+                }
+            database.set_setting("llm_connection_status", "failed")
+            return {
+                "ok": False,
+                "status": "failed",
+                "message": f"Unexpected response format: {resp.text[:300]}",
+            }
+    except Exception as e:
+        database.set_setting("llm_connection_status", "failed")
+        return {
+            "ok": False,
+            "status": "failed",
+            "message": f"Connection error: {str(e)}",
+        }
+
+
+@router.post("/api/transcription/test")
+async def test_transcription_endpoint(req: TranscriptionTestRequest):
+    provider = (req.provider or "groq").strip().lower()
+    api_key = (req.api_key or "").strip()
+    if not api_key:
+        try:
+            api_key = database.get_setting("groq_api_key") or ""
+        except Exception:
+            pass
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Groq API key is required")
+
+    model = (req.model or "whisper-large-v3").strip()
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            if resp.status_code == 200:
+                database.set_setting("groq_connection_status", "connected")
+                return {
+                    "ok": True,
+                    "status": "connected",
+                    "message": f"Successfully connected to Groq API! {model} is available.",
+                }
+            else:
+                database.set_setting("groq_connection_status", "failed")
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "message": f"Groq authentication failed (HTTP {resp.status_code}): {resp.text[:300]}",
+                }
+    except Exception as e:
+        database.set_setting("groq_connection_status", "failed")
+        return {
+            "ok": False,
+            "status": "failed",
+            "message": f"Network error connecting to Groq: {str(e)}",
+        }
 
 
 @router.post("/api/publish/youtube/credentials")

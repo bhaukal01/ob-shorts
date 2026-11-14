@@ -128,6 +128,8 @@ def init_db() -> None:
 
         # Seed settings from .env / os.environ on first run
         _seed_settings(cursor, conn)
+        cursor.execute("DELETE FROM app_settings WHERE key IN ('settings', 'social')")
+        conn.commit()
 
 
 def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
@@ -144,6 +146,11 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "upload_post_api_key": os.environ.get("".join(["UPLOAD_", "POST_", "API_KEY"]), ""),
         "public_api_url": os.environ.get("PUBLIC_API_URL", ""),
         "public_frontend_url": os.environ.get("PUBLIC_FRONTEND_URL", ""),
+        "transcription_provider": os.environ.get("TRANSCRIPTION_PROVIDER", "groq" if os.environ.get("GROQ_API_KEY") else "local"),
+        "groq_api_key": os.environ.get("GROQ_API_KEY", ""),
+        "groq_whisper_model": os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3"),
+        "llm_connection_status": "",
+        "groq_connection_status": "",
     }
 
     now = _now_iso()
@@ -197,7 +204,7 @@ def get_all_settings() -> Dict[str, str]:
     """Return all app settings as a dict."""
     with _LOCK, get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT key, value FROM app_settings")
+        cursor.execute("SELECT key, value FROM app_settings WHERE key NOT IN ('settings', 'social')")
         rows = cursor.fetchall()
         return {r["key"]: r["value"] or "" for r in rows}
 
@@ -208,6 +215,8 @@ def update_settings(updates: Dict[str, Any]) -> None:
     with _LOCK, get_connection() as conn:
         cursor = conn.cursor()
         for k, v in updates.items():
+            if k in ("settings", "social"):
+                continue
             val_str = "" if v is None else str(v)
             cursor.execute(
                 """
