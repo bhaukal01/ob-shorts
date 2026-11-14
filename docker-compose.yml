@@ -1,6 +1,8 @@
 services:
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: openshorts-backend
     ports:
       - "8000:8000"
@@ -12,23 +14,21 @@ services:
       - OMP_NUM_THREADS=2
       - OPENBLAS_NUM_THREADS=2
       - MKL_NUM_THREADS=2
+    env_file:
+      - path: .env
+        required: false
     volumes:
-      - .:/app
-      - /app/__pycache__
-      - ./output:/app/output
       - openshorts_data:/app/data
+      - openshorts_output:/app/output
     restart: unless-stopped
 
   frontend:
     build:
       context: ./dashboard
-      target: dev
+      target: prod
     container_name: openshorts-frontend
     ports:
-      - "5175:5173"
-    volumes:
-      - ./dashboard:/app
-      - /app/node_modules
+      - "3000:80"
     restart: unless-stopped
     depends_on:
       - backend
@@ -41,7 +41,7 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - ./output:/output
+      - openshorts_output:/output
     environment:
       - REMOTION_BUNDLE_PATH=/app/remotion
       - OUTPUT_DIR=/output
@@ -54,3 +54,4 @@ services:
 
 volumes:
   openshorts_data:
+  openshorts_output:

@@ -19,19 +19,15 @@ QUALITY = "quality"            # was: -preset medium -crf 18
 QUALITY_FAST = "quality_fast"  # was: -preset fast -crf 18
 DELIVERY = "delivery"          # was: -preset fast -crf 22
 # A file the pipeline decodes again straight away (the cut that every render
-# reads). Uses -preset veryfast -crf 20 so the intermediate slice is extracted
-# 2-3x faster on CPU with zero degradation to the final vertical reframe.
+# reads). Uses QUALITY_FAST settings so the intermediate slice is extracted
+# quickly on CPU with zero degradation to the final vertical reframe.
 INTERMEDIATE = "intermediate"
 
-_X264_THREADS = os.environ.get("FFMPEG_THREADS", "3")
-_X264_PRESET = os.environ.get("X264_PRESET", "fast")
-_X264_CRF = os.environ.get("X264_CRF", "20")
-
 _X264_ARGS = {
-    QUALITY: ["-c:v", "libx264", "-preset", _X264_PRESET, "-crf", _X264_CRF, "-threads", _X264_THREADS],
-    QUALITY_FAST: ["-c:v", "libx264", "-preset", "faster", "-crf", _X264_CRF, "-threads", _X264_THREADS],
-    DELIVERY: ["-c:v", "libx264", "-preset", "fast", "-crf", "22", "-threads", _X264_THREADS],
-    INTERMEDIATE: ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", _X264_THREADS],
+    QUALITY: ["-c:v", "libx264", "-preset", os.environ.get("X264_PRESET", "medium"), "-crf", os.environ.get("X264_CRF", "18")],
+    QUALITY_FAST: ["-c:v", "libx264", "-preset", os.environ.get("X264_FAST_PRESET", "fast"), "-crf", os.environ.get("X264_CRF", "18")],
+    DELIVERY: ["-c:v", "libx264", "-preset", "fast", "-crf", "22"],
+    INTERMEDIATE: ["-c:v", "libx264", "-preset", os.environ.get("X264_FAST_PRESET", "fast"), "-crf", os.environ.get("X264_CRF", "18")],
 }
 
 # NVENC -cq is not 1:1 with x264 CRF: benchmarked on the prod GPU (RTX 4000

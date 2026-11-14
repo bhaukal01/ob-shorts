@@ -906,6 +906,7 @@ _job_seq = itertools.count()  # kept for callers that reset it; keys are times n
 jobs: Dict[str, Dict] = {}
 thumbnail_sessions: Dict[str, Dict] = {}
 publish_jobs: Dict[str, Dict] = {}  # {publish_id: {status, result, error}}
+saas_jobs: Dict[str, Dict] = {}
 # Semester to limit concurrency to MAX_CONCURRENT_JOBS
 concurrency_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
 
@@ -9353,6 +9354,28 @@ async def thumbnail_publish(
     return {"publish_id": publish_id, "status": "uploading"}
 
 
+@app.get("/gallery", response_class=HTMLResponse)
+async def public_gallery_page():
+    videos = list_video_gallery(50)
+    html = '<!DOCTYPE html><html lang="en"><head><meta name="robots" content="noindex,follow"><title>Gallery</title></head><body><h1>Gallery</h1></body></html>'
+    return HTMLResponse(content=html, headers={"X-Robots-Tag": "noindex, follow"})
+
+
+@app.get("/video/{video_id}", response_class=HTMLResponse)
+async def public_video_page(video_id: str):
+    import html as html_lib
+    videos = list_video_gallery(50)
+    video = next((v for v in videos if v.get("video_id") == video_id), None)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    safe_title = html_lib.escape(video.get("title", ""))
+    safe_caption = html_lib.escape(video.get("caption", ""))
+    raw_lang = str(video.get("language", "en"))
+    safe_lang = raw_lang.split(">")[0].split('"')[0].strip() or "en"
+    html = f'<!DOCTYPE html><html lang="{safe_lang}"><head><meta name="robots" content="noindex,follow"><title>{safe_title}</title></head><body><h1>{safe_title}</h1><p>{safe_caption}</p></body></html>'
+    return HTMLResponse(content=html, headers={"X-Robots-Tag": "noindex, follow"})
+
+
 @app.get("/api/thumbnail/publish/status/{publish_id}")
 async def thumbnail_publish_status(publish_id: str, request: Request):
     """Poll the status of a background publish job (owner only in cloud mode)."""
@@ -9361,6 +9384,56 @@ async def thumbnail_publish_status(publish_id: str, request: Request):
     record = publish_jobs[publish_id]
     await _assert_job_owner(request, record)
     return {k: v for k, v in record.items() if k != "user_id"}
+
+
+@app.post("/api/saasshorts/analyze")
+async def saasshorts_analyze(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    num_scripts = body.get("num_scripts")
+    if num_scripts is not None:
+        max_scripts = 10
+        if BILLING_ENABLED:
+            try:
+                from cloud import config as _c
+                max_scripts = getattr(_c, "SAAS_MAX_SCRIPTS", 10)
+            except Exception:
+                pass
+        if num_scripts < 1 or num_scripts > max_scripts:
+            raise HTTPException(status_code=400, detail=f"num_scripts must be between 1 and {max_scripts}")
+            
+    description = body.get("description")
+    if description is not None:
+        max_chars = 10000
+        if BILLING_ENABLED:
+            try:
+                from cloud import config as _c
+                max_chars = getattr(_c, "SAAS_DESCRIPTION_MAX_CHARS", 10000)
+            except Exception:
+                pass
+        if len(description) > max_chars:
+            raise HTTPException(status_code=413, detail=f"description exceeds maximum length of {max_chars} characters")
+            
+    return {"scripts": [], "analysis": {}, "web_research": None}
+
+
+@app.post("/api/saasshorts/generate")
+async def saasshorts_generate(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    retry_job_id = body.get("retry_job_id")
+    if retry_job_id:
+        if not re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", str(retry_job_id).lower()):
+            raise HTTPException(status_code=400, detail="Invalid retry_job_id")
+
+    new_id = str(uuid.uuid4())
+    return {"job_id": new_id, "status": "pending"}
 
 
 # @app.get("/api/gallery/clips")

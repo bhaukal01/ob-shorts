@@ -81,13 +81,20 @@ def _write(response: dict) -> None:
 async def _stdin_lines():
     """Yield stdin lines without blocking the loop (tool calls run for minutes)."""
     loop = asyncio.get_running_loop()
-    reader = asyncio.StreamReader()
-    await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
-    while True:
-        line = await reader.readline()
-        if not line:  # EOF: the host closed the pipe
-            return
-        yield line
+    if sys.platform == "win32":
+        while True:
+            line = await loop.run_in_executor(None, sys.stdin.readline)
+            if not line:
+                return
+            yield line
+    else:
+        reader = asyncio.StreamReader()
+        await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
+        while True:
+            line = await reader.readline()
+            if not line:  # EOF: the host closed the pipe
+                return
+            yield line
 
 
 async def _serve() -> None:

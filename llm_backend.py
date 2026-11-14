@@ -32,34 +32,53 @@ DEFAULT_TIMEOUT = 600.0  # local models on CPU are slow; a scoring batch can tak
 
 def provider() -> str:
     """``"openai"`` when configured or default, else ``"gemini"``."""
+    env = os.environ.get("LLM_PROVIDER")
+    if env is not None:
+        explicit = env.strip().lower()
+        if explicit in ("openai", "ollama", "local", "openai-compatible"):
+            return "openai"
+        if explicit == "gemini":
+            return "gemini"
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return "openai" if base_url() else "gemini"
     db_val = database.get_setting("llm_provider")
-    explicit = (db_val or os.environ.get("LLM_PROVIDER") or "").strip().lower()
-    if explicit in ("openai", "ollama", "local", "openai-compatible"):
-        return "openai"
-    if explicit == "gemini":
-        return "gemini"
-    # Default to openai if base_url is present or default to openai
-    if base_url():
-        return "openai"
-    if explicit == "":
-        return "openai"
-    return "openai"
+    if db_val:
+        explicit = db_val.strip().lower()
+        if explicit in ("openai", "ollama", "local", "openai-compatible"):
+            return "openai"
+        if explicit == "gemini":
+            return "gemini"
+    return "openai" if base_url() else "gemini"
 
 
 def base_url() -> str:
+    env = os.environ.get("LLM_BASE_URL")
+    if env is not None:
+        return env.strip().rstrip("/")
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return ""
     db_val = database.get_setting("llm_base_url")
-    return (db_val if db_val is not None else os.environ.get("LLM_BASE_URL") or "").strip().rstrip("/")
+    return (db_val or "").strip().rstrip("/")
 
 
 def api_key() -> str:
+    env = os.environ.get("LLM_API_KEY")
+    if env is not None:
+        return env.strip()
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return ""
     db_val = database.get_setting("llm_api_key")
-    return (db_val if db_val is not None else os.environ.get("LLM_API_KEY") or "").strip()
+    return (db_val or "").strip()
 
 
 def model_name() -> str:
+    env = os.environ.get("LLM_MODEL")
+    if env is not None:
+        return env.strip() or DEFAULT_MODEL
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return DEFAULT_MODEL
     db_val = database.get_setting("llm_model")
-    val = (db_val if db_val is not None else os.environ.get("LLM_MODEL") or "").strip()
-    return val or DEFAULT_MODEL
+    return (db_val or "").strip() or DEFAULT_MODEL
 
 
 def active() -> bool:

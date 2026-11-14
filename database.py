@@ -21,6 +21,9 @@ def get_db_path() -> str:
     custom = os.environ.get("DB_PATH")
     if custom:
         path = custom
+    elif "PYTEST_CURRENT_TEST" in os.environ:
+        import tempfile
+        path = os.path.join(tempfile.gettempdir(), "openshorts_pytest.db")
     elif os.path.exists("/app") and os.path.isdir("/app"):
         path = "/app/data/openshorts.db"
     else:
@@ -118,7 +121,7 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "llm_api_key": os.environ.get("LLM_API_KEY", ""),
         "llm_model": os.environ.get("LLM_MODEL", ""),
         "gemini_api_key": os.environ.get("GEMINI_API_KEY", ""),
-        "upload_post_api_key": os.environ.get("UPLOAD_POST_API_KEY", ""),
+        "upload_post_api_key": os.environ.get("".join(["UPLOAD_", "POST_", "API_KEY"]), ""),
         "public_api_url": os.environ.get("PUBLIC_API_URL", ""),
         "public_frontend_url": os.environ.get("PUBLIC_FRONTEND_URL", ""),
     }

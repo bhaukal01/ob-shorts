@@ -2048,7 +2048,7 @@ def _run_gemini_stage(client, model_name, prompt, schema):
     retry policy is shared because a local server has the same failure
     shapes (connection refused while the model loads, a truncated body,
     a 5xx from a busy vLLM)."""
-    use_local = llm_backend.active()
+    use_local = llm_backend.active() and client is None
     config = None if use_local else genai_types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=schema,
