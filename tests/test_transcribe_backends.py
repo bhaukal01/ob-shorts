@@ -1,3 +1,4 @@
+import os
 import json
 import sys
 import types
@@ -297,6 +298,7 @@ def test_release_models_drops_the_transnetv2_singleton_too(monkeypatch):
     assert fake._tn2_model is None
 
 
+@pytest.mark.skipif(os.name == "nt", reason="flock is POSIX-only")
 class TestHostAsrSlot:
     """Cross-process cap on GPU transcriptions (flock slots on the shared disk)."""
 
