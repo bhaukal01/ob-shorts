@@ -281,21 +281,33 @@ def request(account=0):
 def accounts(env=None):
     """The cookie files configured, in order: YOUTUBE_COOKIES, then
     YOUTUBE_COOKIES_2 .. _9. Empty ones are skipped.
-    Supports either raw Netscape cookie text or a path to a cookies.txt file."""
+    Supports raw Netscape cookie text, base64-encoded cookie text, or a path to a cookies.txt file."""
     env = os.environ if env is None else env
     names = ["YOUTUBE_COOKIES"] + [f"YOUTUBE_COOKIES_{i}" for i in range(2, MAX_ACCOUNTS + 1)]
     out = []
     for name in names:
         text = str(env.get(name) or "").strip()
+        if not text:
+            continue
+        if text.startswith(("'", '"')) and text.endswith(("'", '"')):
+            text = text[1:-1].strip()
+        if text.startswith("base64:"):
+            try:
+                import base64
+                text = base64.b64decode(text[7:].strip()).decode("utf-8", "replace").strip()
+            except Exception:
+                pass
+        if os.path.isfile(text):
+            try:
+                with open(text, "r", encoding="utf-8") as f:
+                    text = f.read().strip()
+            except OSError:
+                pass
+        # Unescape literal \n and \t if env parser stored them with backslash escapes
+        if "\\n" in text and "\n" not in text:
+            text = text.replace("\\n", "\n").replace("\\t", "\t")
         if text:
-            if os.path.isfile(text):
-                try:
-                    with open(text, "r", encoding="utf-8") as f:
-                        text = f.read().strip()
-                except OSError:
-                    pass
-            if text:
-                out.append(text + "\n")
+            out.append(text + "\n")
     return out
 
 

@@ -89,3 +89,4 @@ def test_early_audio_coordination_when_started():
                 transcript = early_state["transcript"]
 
     assert transcript == expected_transcript
+

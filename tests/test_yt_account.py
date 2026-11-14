@@ -377,6 +377,23 @@ def test_accounts_supports_file_path(tmp_path, monkeypatch):
     assert res[0].strip() == NETSCAPE.strip()
 
 
+def test_accounts_supports_base64(monkeypatch):
+    import base64
+    b64 = "base64:" + base64.b64encode(NETSCAPE.encode("utf-8")).decode("utf-8")
+    monkeypatch.setenv("YOUTUBE_COOKIES", b64)
+    res = yt_account.accounts()
+    assert len(res) == 1
+    assert res[0].strip() == NETSCAPE.strip()
+
+
+def test_accounts_supports_escaped_newlines(monkeypatch):
+    escaped = NETSCAPE.replace("\n", "\\n").replace("\t", "\\t")
+    monkeypatch.setenv("YOUTUBE_COOKIES", escaped)
+    res = yt_account.accounts()
+    assert len(res) == 1
+    assert res[0].strip() == NETSCAPE.strip()
+
+
 def test_consecutive_videos_take_consecutive_accounts(two_accounts):
     used = []
     for _ in range(4):
