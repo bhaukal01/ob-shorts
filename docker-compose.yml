@@ -42,6 +42,9 @@ services:
       - "3100:3100"
     volumes:
       - openshorts_output:/output
+    env_file:
+      - path: .env
+        required: false
     environment:
       - REMOTION_BUNDLE_PATH=/app/remotion
       - OUTPUT_DIR=/output
