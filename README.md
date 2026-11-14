@@ -62,7 +62,7 @@ In Dokploy under the **Domains** tab of your Compose application:
 1. Click **Add Domain**.
 2. **Domain**: Enter your domain or subdomain (e.g. `shorts.yourdomain.com`).
 3. **Service / Container**: Select **`frontend`**.
-4. **Container Port**: Set to **`80`** (Internal Nginx port inside Docker network. For direct IP access without a domain, OpenShorts binds host port `3001` so it never conflicts with Dokploy's dashboard on port 3000).
+4. **Container Port**: Set to **`80`** (Internal Nginx port inside the Docker network. Dokploy's Traefik routes domain traffic directly here).
 5. **Certificate**: Select **Let's Encrypt** and enable **HTTPS / SSL**.
 6. Click **Save** and **Deploy**.
 

@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    expose:
+      - "8000"
     environment:
       - CLIP_WORKERS=3
       - DETECT_STRIDE=6
@@ -25,8 +25,8 @@ services:
     build:
       context: ./dashboard
       target: prod
-    ports:
-      - "${FRONTEND_PORT:-3001}:80"
+    expose:
+      - "80"
     restart: unless-stopped
     depends_on:
       - backend
@@ -35,8 +35,8 @@ services:
     build:
       context: .
       dockerfile: render-service/Dockerfile
-    ports:
-      - "${RENDERER_PORT:-3100}:3100"
+    expose:
+      - "3100"
     volumes:
       - openshorts_output:/output
     env_file:
