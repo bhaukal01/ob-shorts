@@ -340,7 +340,7 @@ HOOK PLAYBOOK — pick the strongest fitting pattern for `viral_hook_text` (max 
   video ("I automated my clips with AI") is wrong. If nothing concrete can be
   named, quote the clip's strongest sentence instead of summarising the topic.
 
-COPY RULES — ALL text fields (descriptions, title, hook) MUST be written in TRANSCRIPT_LANGUAGE ({language}):
+COPY RULES — {metadata_instructions}
 - Descriptions (TikTok + Instagram): 1-2 punchy sentences that tease the payoff
   without spoiling it, then 3-5 topically relevant hashtags. No generic hashtag spam.
 - `video_title_for_youtube_short`: max 100 chars, curiosity-driven, no fake claims.
@@ -370,6 +370,22 @@ Return only:
   ]
 }}
 """
+
+
+def get_metadata_instructions(language="unknown") -> str:
+    meta_script = os.environ.get("METADATA_SCRIPT", "auto").strip().lower()
+    if meta_script == "hinglish":
+        return (
+            "LANGUAGE & SCRIPT RULE: ALL text fields (video_title_for_youtube_short, "
+            "viral_hook_text, video_description_for_tiktok, video_description_for_instagram) "
+            "MUST be written in Romanized Hinglish (conversational Hindi written using the Latin/English alphabet, "
+            "e.g. 'CarryMinati Ne Kya Kiya! Dekho Ye Moment #CarryMinati #Funny'). DO NOT output Devanagari script."
+        )
+    elif meta_script == "english":
+        return "LANGUAGE & SCRIPT RULE: ALL text fields (title, hook, descriptions, hashtags) MUST be written in fluent English."
+    elif meta_script == "hindi":
+        return "LANGUAGE & SCRIPT RULE: ALL text fields MUST be written in Hindi (Devanagari script - हिंदी)."
+    return f"ALL text fields (descriptions, title, hook) MUST be written in TRANSCRIPT_LANGUAGE ({language})."
 
 
 def _strip_code_fences(text: str) -> str:
@@ -613,6 +629,7 @@ def main() -> int:
         # placeholder for one: it ranks whatever it is given.
         fmt["min_clips"], fmt["max_clips"] = clip_count_targets(len(payload.get("windows") or []))
         fmt["min_secs"], fmt["max_secs"] = clip_duration_bounds()
+        fmt["metadata_instructions"] = get_metadata_instructions(language)
     prompt = template.format(**fmt)
 
     _log(f"🤖 Gemini worker request: mode={args.mode} strategy={args.strategy} model={model_name} items={len(payload.get('windows', []))}")

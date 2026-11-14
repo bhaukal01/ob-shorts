@@ -67,6 +67,9 @@ export default function MediaInput({ onProcess, isProcessing }) {
     const [subtitleScript, setSubtitleScript] = useState(() => {
         try { return localStorage.getItem('os_subtitle_script') || 'auto'; } catch { return 'auto'; }
     });
+    const [metadataScript, setMetadataScript] = useState(() => {
+        try { return localStorage.getItem('os_metadata_script') || 'auto'; } catch { return 'auto'; }
+    });
     const infoRef = useRef(null);
 
     // Close the compatibility popover on any outside click.
@@ -131,6 +134,7 @@ export default function MediaInput({ onProcess, isProcessing }) {
             autoHookStyle,
             layout,
             subtitleScript,
+            metadataScript,
             sourceStart: range ? Math.round(range.start) : null,
             sourceEnd: range ? Math.round(range.end) : null,
         };
@@ -139,6 +143,7 @@ export default function MediaInput({ onProcess, isProcessing }) {
             localStorage.setItem('os_auto_hook_style_v2', autoHookStyle);
             localStorage.setItem('os_layout', layout);
             localStorage.setItem('os_subtitle_script', subtitleScript);
+            localStorage.setItem('os_metadata_script', metadataScript);
         } catch { /* ignore */ }
         if (mode === 'url' && url) {
             onProcess({ type: 'url', payload: url, acknowledged: true, outputFormat, ...advanced });
@@ -385,6 +390,20 @@ export default function MediaInput({ onProcess, isProcessing }) {
                                     <option value="auto">Auto (Original Script)</option>
                                     <option value="hindi">Hindi (Devanagari - हिंदी)</option>
                                     <option value="hinglish">Hinglish (Roman Script - "Namaste Dosto")</option>
+                                </select>
+                            </div>
+                            <div className="col-span-1 sm:col-span-3 flex flex-wrap items-center justify-between gap-3 pt-3 sm:pt-1 border-t border-rule">
+                                <span className="text-xs text-ink2">title, description &amp; tags</span>
+                                <select
+                                    value={metadataScript}
+                                    onChange={(e) => setMetadataScript(e.target.value)}
+                                    className="input-field !w-auto text-xs py-1.5"
+                                    aria-label="title, description and tags language"
+                                >
+                                    <option value="auto">Auto (Match Video Language)</option>
+                                    <option value="hinglish">Hinglish (Roman Hindi - "CarryMinati Ne...")</option>
+                                    <option value="english">English (Pure English)</option>
+                                    <option value="hindi">Hindi (Devanagari - हिंदी)</option>
                                 </select>
                             </div>
                             <div className="col-span-1 sm:col-span-3 flex flex-wrap items-center justify-between gap-3 pt-3 sm:pt-1 border-t border-rule">

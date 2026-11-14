@@ -3,7 +3,10 @@ from dotenv import load_dotenv
 load_dotenv()
 import boto3
 from botocore.exceptions import ClientError
+from botocore.config import Config
 import logging
+import json
+import time as time_module
 
 # Configure silent logging for boto3 and botocore
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
@@ -13,61 +16,159 @@ logging.getLogger('s3transfer').setLevel(logging.CRITICAL)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def upload_file_to_s3(file_path, bucket_name, s3_key):
-    """
-    Upload a file to an S3 bucket silently.
-    """
-    access_key = os.environ.get('AWS_ACCESS_KEY_ID')
-    secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
-    region = os.environ.get('AWS_REGION', 'eu-west-3')
 
-    if not access_key or not secret_key:
-        return False
-
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name=region
-    )
+def get_s3_config() -> dict:
+    """Retrieve S3 storage configuration from SQLite database with env fallback."""
+    cfg = {
+        "enabled": False,
+        "endpoint_url": "",
+        "bucket_name": "",
+        "access_key": "",
+        "secret_key": "",
+        "region": "auto",
+    }
     try:
-        # Extra arguments for public read if needed, but the user didn't specify.
-        # Given the bucket name, it might be for a web app.
-        s3_client.upload_file(file_path, bucket_name, s3_key)
-        return True
-    except ClientError:
-        return False
+        import database
+        cfg["enabled"] = str(database.get_setting("s3_enabled") or "0").strip() in ("1", "true", "yes")
+        cfg["endpoint_url"] = (database.get_setting("s3_endpoint_url") or "").strip()
+        cfg["bucket_name"] = (database.get_setting("s3_bucket_name") or "").strip()
+        cfg["access_key"] = (database.get_setting("s3_access_key") or "").strip()
+        cfg["secret_key"] = (database.get_setting("s3_secret_key") or "").strip()
+        cfg["region"] = (database.get_setting("s3_region") or "auto").strip()
     except Exception:
-        return False
+        pass
+
+    if not cfg["bucket_name"]:
+        cfg["bucket_name"] = os.environ.get("S3_BUCKET_NAME") or os.environ.get("AWS_S3_BUCKET") or ""
+    if not cfg["access_key"]:
+        cfg["access_key"] = os.environ.get("S3_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or ""
+    if not cfg["secret_key"]:
+        cfg["secret_key"] = os.environ.get("S3_SECRET_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY") or ""
+    if not cfg["endpoint_url"]:
+        cfg["endpoint_url"] = os.environ.get("S3_ENDPOINT_URL") or ""
+    if cfg["region"] == "auto" and os.environ.get("AWS_REGION"):
+        cfg["region"] = os.environ.get("AWS_REGION")
+    if not cfg["enabled"]:
+        cfg["enabled"] = os.environ.get("S3_ENABLED", "0").strip() in ("1", "true", "yes") or bool(cfg["bucket_name"] and cfg["access_key"])
+
+    return cfg
 
 
-from botocore.config import Config
-import json
-import time as time_module
+def is_s3_enabled() -> bool:
+    """Check whether S3 storage is enabled and validly configured."""
+    cfg = get_s3_config()
+    return bool(cfg["enabled"] and cfg["bucket_name"] and cfg["access_key"] and cfg["secret_key"])
 
-# Simple in-memory cache for gallery clips
-_clips_cache = {
-    "data": None,
-    "timestamp": 0
-}
-CACHE_TTL_SECONDS = 300  # 5 minutes
 
-def get_s3_client():
-    """Returns an authenticated S3 client."""
-    access_key = os.environ.get('AWS_ACCESS_KEY_ID')
-    secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
-    region = os.environ.get('AWS_REGION', 'eu-west-3')
+def get_s3_bucket() -> str:
+    """Return the configured S3 bucket name."""
+    return get_s3_config()["bucket_name"]
 
-    if not access_key or not secret_key:
+
+def get_s3_client(cfg=None):
+    """Returns an authenticated S3 / S3-compatible client with signature v4."""
+    if cfg is None:
+        cfg = get_s3_config()
+
+    if not cfg.get("access_key") or not cfg.get("secret_key"):
         return None
 
-    return boto3.client(
-        's3',
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name=region,
-        config=Config(signature_version='s3v4')
-    )
+    region = cfg.get("region") or "auto"
+    if region == "auto":
+        region = "us-east-1"  # boto3 requires a region name string even for custom endpoints
+
+    kwargs = {
+        "service_name": "s3",
+        "aws_access_key_id": cfg["access_key"],
+        "aws_secret_access_key": cfg["secret_key"],
+        "region_name": region,
+        "config": Config(signature_version="s3v4", s3={"addressing_style": "path" if cfg.get("endpoint_url") else "auto"}),
+    }
+    if cfg.get("endpoint_url"):
+        kwargs["endpoint_url"] = cfg["endpoint_url"].rstrip("/")
+
+    return boto3.client(**kwargs)
+
+
+def test_s3_connection(endpoint_url=None, bucket_name=None, access_key=None, secret_key=None, region=None):
+    """Test connection to the S3 bucket."""
+    cfg = get_s3_config()
+    if endpoint_url is not None:
+        cfg["endpoint_url"] = endpoint_url.strip()
+    if bucket_name is not None:
+        cfg["bucket_name"] = bucket_name.strip()
+    if access_key is not None:
+        cfg["access_key"] = access_key.strip()
+    if secret_key is not None:
+        cfg["secret_key"] = secret_key.strip()
+    if region is not None:
+        cfg["region"] = region.strip()
+
+    if not cfg["bucket_name"]:
+        raise ValueError("Bucket name is required")
+    if not cfg["access_key"] or not cfg["secret_key"]:
+        raise ValueError("Access Key ID and Secret Access Key are required")
+
+    client = get_s3_client(cfg)
+    if not client:
+        raise ValueError("Failed to create S3 client")
+
+    # List up to 1 object to verify bucket access & permissions
+    client.list_objects_v2(Bucket=cfg["bucket_name"], MaxKeys=1)
+    return True
+
+
+def upload_file_to_s3(file_path, bucket_name=None, s3_key=None):
+    """Upload a file to the S3 bucket silently."""
+    if not bucket_name:
+        bucket_name = get_s3_bucket()
+    if not s3_key:
+        s3_key = os.path.basename(file_path)
+
+    s3_client = get_s3_client()
+    if not s3_client or not bucket_name:
+        return False
+
+    extra_args = {}
+    if file_path.endswith(".mp4"):
+        extra_args["ContentType"] = "video/mp4"
+    elif file_path.endswith(".zip"):
+        extra_args["ContentType"] = "application/zip"
+    elif file_path.endswith(".json"):
+        extra_args["ContentType"] = "application/json"
+
+    try:
+        s3_client.upload_file(file_path, bucket_name, s3_key, ExtraArgs=extra_args if extra_args else None)
+        return True
+    except Exception as e:
+        logger.error(f"S3 upload error for {file_path}: {e}")
+        return False
+
+
+def get_presigned_download_url_for_clip(job_id, filename, expiration=86400):
+    """Generate a direct presigned download URL for a clip from S3."""
+    if not is_s3_enabled():
+        return None
+    cfg = get_s3_config()
+    s3_client = get_s3_client(cfg)
+    if not s3_client:
+        return None
+
+    s3_key = f"{job_id}/{filename}"
+    try:
+        return s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': cfg['bucket_name'],
+                'Key': s3_key,
+                'ResponseContentDisposition': f'attachment; filename="{filename}"'
+            },
+            ExpiresIn=expiration
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL for {s3_key}: {e}")
+        return None
+
 
 def generate_presigned_url(bucket_name, object_key, expiration=3600):
     """Generate a presigned URL to share an S3 object."""

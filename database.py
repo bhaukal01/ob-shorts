@@ -151,6 +151,13 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "groq_whisper_model": os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3"),
         "llm_connection_status": "",
         "groq_connection_status": "",
+        "s3_enabled": os.environ.get("S3_ENABLED", "0"),
+        "s3_endpoint_url": os.environ.get("S3_ENDPOINT_URL", ""),
+        "s3_bucket_name": os.environ.get("S3_BUCKET_NAME") or os.environ.get("AWS_S3_BUCKET", ""),
+        "s3_access_key": os.environ.get("S3_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID", ""),
+        "s3_secret_key": os.environ.get("S3_SECRET_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+        "s3_region": os.environ.get("S3_REGION") or os.environ.get("AWS_REGION", "auto"),
+        "s3_connection_status": "",
     }
 
     now = _now_iso()

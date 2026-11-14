@@ -220,7 +220,7 @@ def _is_format_rejection(resp: httpx.Response) -> bool:
         or "format" in body
 
 
-def generate_json(prompt: str, schema: Type[BaseModel], model: Optional[str] = None,
+def generate_json(prompt: Union[str, list], schema: Type[BaseModel], model: Optional[str] = None,
                   ) -> Tuple[dict, Optional[dict]]:
     """One chat completion that must come back as JSON matching ``schema``.
 

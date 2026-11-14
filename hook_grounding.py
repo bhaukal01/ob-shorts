@@ -141,13 +141,41 @@ def _ask_gemini(frames, prompt, api_key):
     return json.loads(response.text) or {}
 
 
+def _ask_custom_llm(frames, prompt):
+    import llm_backend
+    import gemini_worker
+    import base64
+    if frames:
+        try:
+            content = []
+            for b in frames[:3]:
+                b64 = base64.b64encode(b).decode("utf-8")
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
+                })
+            content.append({"type": "text", "text": prompt})
+            parsed, _ = llm_backend.generate_json(content, schema=gemini_worker.GroundedHook)
+            if parsed and parsed.get("viral_hook_text"):
+                return parsed
+        except Exception:
+            pass
+
+    # Fall back to text-prompt grounding
+    parsed, _ = llm_backend.generate_json(prompt, schema=gemini_worker.GroundedHook)
+    return parsed or {}
+
+
 def reground(clip_path, clip, transcript, start, end) -> Optional[dict]:
     """Rewrite ``clip['viral_hook_text']`` / ``video_title_for_youtube_short``
-    in place from the clip's frames. Returns what changed (also stored under
-    ``clip['hook_grounding']``), or None when skipped or failed."""
+    in place from the clip's frames or custom LLM context. Returns what changed
+    (also stored under ``clip['hook_grounding']``), or None when skipped or failed."""
+    import llm_backend
     api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        print("   🪝 Hook grounding skipped: needs a Gemini key (frames), "
+    use_custom_llm = llm_backend.active() and not api_key
+
+    if not api_key and not use_custom_llm:
+        print("   🪝 Hook grounding skipped: needs a Gemini key or custom LLM setup, "
               "keeping the transcript hook.")
         return None
     try:
@@ -155,15 +183,21 @@ def reground(clip_path, clip, transcript, start, end) -> Optional[dict]:
 
         times = sample_times(clip.get("layout_ranges"), float(end) - float(start))
         frames = frames_at(clip_path, times)
-        if not frames:
-            return None
         language = str((transcript or {}).get("language") or "unknown")
         prompt = gemini_worker.GROUNDED_HOOK_PROMPT.format(
             language=language,
             current_hook=clip.get("viral_hook_text") or "",
             current_title=clip.get("video_title_for_youtube_short") or "",
             transcript=clip_words(transcript, start, end)[:4000] or "(no speech)")
-        answer = _ask_gemini(frames, prompt, api_key)
+
+        if api_key:
+            if not frames:
+                return None
+            answer = _ask_gemini(frames, prompt, api_key)
+        else:
+            print(f"   🪝 Grounding hook using custom LLM ({llm_backend.model_name()})...")
+            answer = _ask_custom_llm(frames, prompt)
+
         hook = str(answer.get("viral_hook_text") or "").strip()
         title = str(answer.get("video_title_for_youtube_short") or "").strip()
         if not hook:
@@ -176,9 +210,9 @@ def reground(clip_path, clip, transcript, start, end) -> Optional[dict]:
         clip["hook_grounding"] = {
             "on_screen": str(answer.get("on_screen") or "")[:200],
             "before": before,
-            "frames": len(frames),
+            "frames": len(frames or []),
         }
-        print(f"   🪝 Hook regrounded on screen ({clip['hook_grounding']['on_screen'][:60]}): {hook}")
+        print(f"   🪝 Hook regrounded ({clip['hook_grounding']['on_screen'][:60]}): {hook}")
         return clip["hook_grounding"]
     except Exception as e:
         print(f"   ⚠️ Hook grounding failed ({type(e).__name__}: {e}) — keeping the transcript hook.")

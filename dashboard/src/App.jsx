@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import McpConnectCard from './components/McpConnectCard';
@@ -332,6 +332,13 @@ function App() {
     groq_whisper_model: 'whisper-large-v3',
     llm_connection_status: '',
     groq_connection_status: '',
+    s3_enabled: '0',
+    s3_endpoint_url: '',
+    s3_bucket_name: '',
+    s3_access_key: '',
+    s3_secret_key: '',
+    s3_region: 'auto',
+    s3_connection_status: '',
   });
   const [socialStatus, setSocialStatus] = useState({
     youtube: { connected: false, channel_id: '', channel_title: '', has_credentials: false, client_id: '' },
@@ -349,6 +356,9 @@ function App() {
   const [testingGroq, setTestingGroq] = useState(false);
   const [groqTestMsg, setGroqTestMsg] = useState(null);
   const [showGroqKey, setShowGroqKey] = useState(false);
+  const [testingS3, setTestingS3] = useState(false);
+  const [s3TestMsg, setS3TestMsg] = useState(null);
+  const [showS3Secret, setShowS3Secret] = useState(false);
 
   // YouTube OAuth Credentials
   const [ytClientId, setYtClientId] = useState('');
@@ -983,6 +993,47 @@ function App() {
     }
   };
 
+  const handleTestS3Connection = async () => {
+    if (!backendSettings.s3_bucket_name || !backendSettings.s3_access_key || !backendSettings.s3_secret_key) {
+      setS3TestMsg({ ok: false, message: 'Please enter Bucket Name, Access Key, and Secret Key first.' });
+      return;
+    }
+    setTestingS3(true);
+    setS3TestMsg(null);
+    try {
+      const res = await apiFetch('/api/s3/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint_url: backendSettings.s3_endpoint_url || null,
+          bucket_name: backendSettings.s3_bucket_name,
+          access_key: backendSettings.s3_access_key,
+          secret_key: backendSettings.s3_secret_key,
+          region: backendSettings.s3_region || 'auto',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setS3TestMsg({ ok: true, message: data.message });
+        const updated = { ...backendSettings, s3_connection_status: 'connected', s3_enabled: '1' };
+        setBackendSettings(updated);
+        saveBackendSettings(updated);
+      } else {
+        setS3TestMsg({ ok: false, message: data.message || data.detail || 'S3 connection test failed.' });
+        const updated = { ...backendSettings, s3_connection_status: 'failed' };
+        setBackendSettings(updated);
+        saveBackendSettings(updated);
+      }
+    } catch (err) {
+      setS3TestMsg({ ok: false, message: err.message || 'Network error testing S3 connection.' });
+      const updated = { ...backendSettings, s3_connection_status: 'failed' };
+      setBackendSettings(updated);
+      saveBackendSettings(updated);
+    } finally {
+      setTestingS3(false);
+    }
+  };
+
   const handleSaveYouTubeCreds = async () => {
     if (!ytClientId || !ytClientSecret) {
       setYtStatusMsg('Please enter both Client ID and Client Secret.');
@@ -1481,6 +1532,7 @@ function App() {
         // 'auto' is the server default, so only a deliberate choice travels.
         layouts: data.layout && data.layout !== 'auto' ? data.layout : null,
         subtitle_script: data.subtitleScript && data.subtitleScript !== 'auto' ? data.subtitleScript : null,
+        metadata_script: data.metadataScript && data.metadataScript !== 'auto' ? data.metadataScript : null,
         // Set when the user took the quota wall's "clip the first N minutes"
         // offer: the server reserves N minutes and cuts the source to them.
         max_minutes: data.maxMinutes || null,
@@ -2414,6 +2466,178 @@ function App() {
                     className="btn-primary py-2 px-5 text-xs flex items-center gap-2"
                   >
                     <Check size={14} /> Save Transcription Configuration
+                  </button>
+                </div>
+              </div>
+
+              {/* SECTION: S3-Compatible Storage */}
+              <div className="card p-5 sm:p-6 space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
+                      <HardDrive size={18} className="text-brass" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-medium text-ink lowercase">S3-Compatible Cloud Storage</h2>
+                      <p className="text-xs text-muted">Cloudflare R2, AWS S3, MinIO, Wasabi, Backblaze B2, or any S3 provider</p>
+                    </div>
+                  </div>
+                  {backendSettings.s3_connection_status === 'connected' ? (
+                    <span className="badge-ok flex items-center gap-1 text-xs">
+                      <Check size={12} /> Connected: {backendSettings.s3_bucket_name || 'S3 Bucket'}
+                    </span>
+                  ) : backendSettings.s3_connection_status === 'failed' ? (
+                    <span className="badge-warn flex items-center gap-1 text-xs text-danger">
+                      <AlertCircle size={12} /> Connection Error
+                    </span>
+                  ) : (
+                    <span className="badge-warn text-xs">
+                      {backendSettings.s3_enabled === '1' ? 'Configured' : 'Disabled'}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-muted leading-relaxed">
+                  Offload final generated shorts, clips, and download ZIPs directly to an S3 bucket. Downloads stream via direct presigned URLs without consuming your VPS bandwidth. All configuration is stored directly in settings without editing <code className="text-brass">.env</code>.
+                </p>
+
+                {/* Enable S3 Toggle */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="s3_enabled_checkbox"
+                    checked={backendSettings.s3_enabled === '1'}
+                    onChange={(e) => setBackendSettings({ ...backendSettings, s3_enabled: e.target.checked ? '1' : '0' })}
+                    className="w-4 h-4 accent-brass rounded"
+                  />
+                  <label htmlFor="s3_enabled_checkbox" className="text-sm font-medium text-ink cursor-pointer">
+                    Enable S3-Compatible Storage for video exports &amp; direct downloads
+                  </label>
+                </div>
+
+                {backendSettings.s3_enabled === '1' && (
+                  <div className="space-y-4 pt-2 border-t border-rule/50">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                        Endpoint URL <span className="text-muted lowercase font-normal">(Leave blank for standard AWS S3)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={backendSettings.s3_endpoint_url || ''}
+                        onChange={(e) => setBackendSettings({ ...backendSettings, s3_endpoint_url: e.target.value })}
+                        placeholder="https://<account_id>.r2.cloudflarestorage.com or https://s3.wasabisys.com"
+                        className="input-field text-sm font-mono w-full"
+                      />
+                      <p className="text-[11px] text-muted">
+                        For Cloudflare R2: <code className="text-brass">https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</code>. For MinIO: <code className="text-brass">http://your-minio:9000</code>.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                          Bucket Name
+                        </label>
+                        <input
+                          type="text"
+                          value={backendSettings.s3_bucket_name || ''}
+                          onChange={(e) => setBackendSettings({ ...backendSettings, s3_bucket_name: e.target.value })}
+                          placeholder="openshorts-videos"
+                          className="input-field text-sm font-mono w-full"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                          Region
+                        </label>
+                        <input
+                          type="text"
+                          value={backendSettings.s3_region || 'auto'}
+                          onChange={(e) => setBackendSettings({ ...backendSettings, s3_region: e.target.value })}
+                          placeholder="auto (or us-east-1, ap-south-1)"
+                          className="input-field text-sm font-mono w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                          Access Key ID
+                        </label>
+                        <input
+                          type="text"
+                          value={backendSettings.s3_access_key || ''}
+                          onChange={(e) => setBackendSettings({ ...backendSettings, s3_access_key: e.target.value })}
+                          placeholder="e.g. AKIAIOSFODNN7EXAMPLE"
+                          className="input-field text-sm font-mono w-full"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                          Secret Access Key
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showS3Secret ? 'text' : 'password'}
+                            value={backendSettings.s3_secret_key || ''}
+                            onChange={(e) => setBackendSettings({ ...backendSettings, s3_secret_key: e.target.value })}
+                            placeholder="e.g. wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                            className="input-field text-sm font-mono w-full pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowS3Secret(!showS3Secret)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink p-1"
+                            title={showS3Secret ? 'Hide secret key' : 'Show secret key'}
+                          >
+                            {showS3Secret ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Test Connection Button & Persistent Status */}
+                    <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-rule/50">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleTestS3Connection}
+                          disabled={testingS3 || !backendSettings.s3_bucket_name || !backendSettings.s3_access_key || !backendSettings.s3_secret_key}
+                          className="btn-quiet py-2 px-3 text-xs flex items-center justify-center gap-1.5 shrink-0"
+                          title="Tests S3 credentials and checks bucket accessibility"
+                        >
+                          <Zap size={13} className={testingS3 ? 'animate-spin text-brass' : 'text-brass'} />
+                          {testingS3 ? 'Testing S3 Connection...' : 'Test S3 Connection'}
+                        </button>
+                        {backendSettings.s3_connection_status === 'connected' && (
+                          <span className="badge-ok flex items-center gap-1.5 text-xs py-1 px-2.5">
+                            <Check size={12} /> Connected &amp; Verified
+                          </span>
+                        )}
+                        {backendSettings.s3_connection_status === 'failed' && (
+                          <span className="badge-warn flex items-center gap-1.5 text-xs py-1 px-2.5 text-danger">
+                            <AlertCircle size={12} /> Connection Failed
+                          </span>
+                        )}
+                      </div>
+                      {s3TestMsg && (
+                        <p className={`text-xs flex items-center gap-1.5 ${s3TestMsg.ok ? 'text-ok' : 'text-danger'}`}>
+                          {s3TestMsg.ok ? <Check size={13} /> : <AlertCircle size={13} />} {s3TestMsg.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => saveBackendSettings()}
+                    disabled={settingsLoading}
+                    className="btn-primary py-2 px-5 text-xs flex items-center gap-2"
+                  >
+                    <Check size={14} /> Save S3 Configuration
                   </button>
                 </div>
               </div>

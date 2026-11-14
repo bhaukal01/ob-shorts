@@ -58,6 +58,10 @@ _EMOJI_FONT_CANDIDATES = [
     "/mnt/c/Windows/Fonts/seguiemj.ttf",
     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
     "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf",
+    "/usr/share/fonts/truetype/NotoColorEmoji.ttf",
+    "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+    "/usr/local/share/fonts/NotoColorEmoji.ttf",
+    "/usr/local/share/fonts/openshorts/NotoColorEmoji.ttf",
     "/System/Library/Fonts/Apple Color Emoji.ttc",
 ]
 
@@ -155,12 +159,14 @@ def _draw_mixed(img, draw, xy, text, font, emoji_font, fill, outline=None):
     stroke_w = outline[1] if outline else 0
     stroke_fill = outline[0] if outline else None
     for is_emoji, chunk in _split_emoji_runs(text):
-        if is_emoji and emoji_font:
-            scale = _emoji_scale(font, emoji_font)
-            rendered = _render_emoji_chunk(chunk, emoji_font, scale, fill)
-            if rendered is not None:
-                img.alpha_composite(rendered, (int(x), int(y)))
-                x += draw.textlength(chunk, font=emoji_font[0]) * scale
+        if is_emoji:
+            if emoji_font:
+                scale = _emoji_scale(font, emoji_font)
+                rendered = _render_emoji_chunk(chunk, emoji_font, scale, fill)
+                if rendered is not None:
+                    img.alpha_composite(rendered, (int(x), int(y)))
+                    x += draw.textlength(chunk, font=emoji_font[0]) * scale
+            # If emoji font unavailable or rendering skipped, don't fall back to text font to avoid drawing tofu boxes
         else:
             if stroke_w:
                 draw.text((x, y), chunk, font=font, fill=fill,
@@ -284,6 +290,19 @@ def create_hook_image(text, target_width, output_image_path="hook_overlay.png", 
     # (pill -> Montserrat, the rest -> Noto Serif, as they always rendered).
     default_font = "montserrat" if look.get("font") == PILL_FONT_PATH else "serif"
     font_path, size_factor = HOOK_FONTS.get(font or default_font, HOOK_FONTS[default_font])
+
+    has_devanagari = any('\u0900' <= ch <= '\u097F' for ch in text)
+    if has_devanagari:
+        dev_candidates = [
+            os.path.join(FONT_DIR, "NotoSansDevanagari-Bold.ttf"),
+            "/usr/local/share/fonts/openshorts/NotoSansDevanagari-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf",
+        ]
+        for dev_path in dev_candidates:
+            if os.path.exists(dev_path):
+                font_path = dev_path
+                break
+
     base_font_size = int(target_width * size_factor)
     font_size = int(base_font_size * font_scale)
     

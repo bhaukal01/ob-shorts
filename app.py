@@ -5584,6 +5584,7 @@ async def process_endpoint(
     source_start: Optional[str] = Form(None),
     source_end: Optional[str] = Form(None),
     subtitle_script: Optional[str] = Form(None),
+    metadata_script: Optional[str] = Form(None),
 ):
     api_key = await resolve_gemini(request)
     if not api_key:
@@ -5622,6 +5623,7 @@ async def process_endpoint(
         source_start = body.get("source_start")
         source_end = body.get("source_end")
         subtitle_script = body.get("subtitle_script") or subtitle_script
+        metadata_script = body.get("metadata_script") or metadata_script
 
     # Normalize output format (auto = keep pipeline default).
     if output_format not in ("vertical", "horizontal", "square"):
@@ -5760,6 +5762,9 @@ async def process_endpoint(
 
     if subtitle_script:
         env["SUBTITLE_SCRIPT"] = str(subtitle_script).strip().lower()
+
+    if metadata_script:
+        env["METADATA_SCRIPT"] = str(metadata_script).strip().lower()
 
     # Manual generation controls (discussion #65): optional clip-count target
     # and duration band, forwarded to the selection prompts via the same env
@@ -6063,17 +6068,34 @@ def _with_download_urls(result):
     """The job result plus, per clip, a signed absolute ``download_url``: what
     an API caller hands to a downloader that cannot send its API key. A copy,
     never the live record (the dashboard keeps editing that one)."""
-    secret = _media_secret()
     clips = (result or {}).get('clips') if isinstance(result, dict) else None
-    if not secret or not clips:
+    if not clips:
         return result
+    secret = _media_secret()
     base = os.environ.get("PUBLIC_API_URL", "").rstrip("/")
     out = dict(result)
     out['clips'] = []
+
+    import s3_uploader
+    s3_on = s3_uploader.is_s3_enabled()
+
     for clip in clips:
-        rel = clip.get('video_url') if isinstance(clip, dict) else None
-        if isinstance(rel, str) and rel.startswith("/videos/"):
-            clip = {**clip, 'download_url': _signed_media_url(rel, base)}
+        if isinstance(clip, dict):
+            rel = clip.get('video_url')
+            s3_url = None
+            if s3_on and isinstance(rel, str) and rel.startswith("/videos/"):
+                parts = rel.strip("/").split("/")
+                if len(parts) >= 3:
+                    job_id = parts[1]
+                    fn = parts[2]
+                    try:
+                        s3_url = s3_uploader.get_presigned_download_url_for_clip(job_id, fn)
+                    except Exception:
+                        pass
+            if s3_url:
+                clip = {**clip, 'download_url': s3_url}
+            elif secret and isinstance(rel, str) and rel.startswith("/videos/"):
+                clip = {**clip, 'download_url': _signed_media_url(rel, base)}
         out['clips'].append(clip)
     return out
 

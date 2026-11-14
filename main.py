@@ -130,6 +130,12 @@ def _get_face_detector():
             print(f"⚠️ Face detector initialization warning: {e}")
     return _face_detector
 
+
+def __getattr__(name):
+    if name == "face_detection":
+        return _get_face_detector()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 # Consecutive detections a large target move must survive before the camera
 # follows it (see SmoothedCameraman.update_target). Env-overridable so the
 # damping can be dialled back without a deploy; 1 restores the old behaviour.
@@ -1071,7 +1077,6 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
 
     def _early_audio(info, extractor_args, proxy, cookies):
         """Fetch the audio track alone and hand it to on_audio (background)."""
-        import copy
         try:
             opts = {
                 **_base_opts(extractor_args, proxy, cookies),
@@ -1083,12 +1088,19 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             # Own thread: the guard is per thread, so it is entered again here.
             import ssrf_guard
             with ssrf_guard.guarded(), yt_dlp.YoutubeDL(opts) as ydl:
-                res = ydl.process_ie_result(copy.deepcopy(info), download=True)
+                if info and isinstance(info, dict) and info.get('formats'):
+                    try:
+                        res = ydl.process_ie_result(info, download=True)
+                    except Exception:
+                        res = ydl.extract_info(url, download=True)
+                else:
+                    res = ydl.extract_info(url, download=True)
             path = ((res.get('requested_downloads') or [{}])[0].get('filepath')
                     or res.get('filepath'))
             if path and os.path.exists(path):
                 print(f"🎧 Audio ready ahead of the video: {os.path.basename(path)}", flush=True)
-                on_audio(path, info.get('duration'))
+                dur = (info.get('duration') if info else None) or (res.get('duration') if res else None)
+                on_audio(path, dur)
         except Exception as e:
             print(f"   ℹ️ Early audio skipped ({type(e).__name__}: {e}) — "
                   f"transcribing once the video is in.", flush=True)
@@ -1127,7 +1139,12 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
         if (on_audio and not _early["started"] and info.get('formats') and not ranged
                 and not (_proxy and proxy == _proxy)):
             _early["started"] = True
-            threading.Thread(target=_early_audio, args=(info, extractor_args, proxy, cookies),
+            try:
+                import copy
+                audio_info = copy.deepcopy(info)
+            except Exception:
+                audio_info = None
+            threading.Thread(target=_early_audio, args=(audio_info, extractor_args, proxy, cookies),
                              daemon=True).start()
         expected = os.path.join(output_dir, f'{sanitized}.mp4')
         if os.path.exists(expected):
@@ -2244,6 +2261,7 @@ def get_viral_clips(transcript_result, video_duration, viewer_clips=None):
                     video_duration=video_duration, language=language,
                     min_clips=lo, max_clips=hi,
                     min_secs=min_secs, max_secs=max_secs,
+                    metadata_instructions=gemini_worker.get_metadata_instructions(language),
                     windows_json=json.dumps(_payload(ws), ensure_ascii=False))
             return build
 
@@ -2295,6 +2313,19 @@ def get_viral_clips(transcript_result, video_duration, viewer_clips=None):
             print(f"   Dropped {len(shorts) - len(deduped)} clip(s) overlapping a "
                   f"better-scored one.")
             shorts = deduped
+
+        meta_script = os.environ.get("METADATA_SCRIPT", "auto").strip().lower()
+        if meta_script == "hinglish":
+            try:
+                import hindi_transliterator
+                for s in shorts:
+                    for field in ("video_title_for_youtube_short", "viral_hook_text",
+                                  "video_description_for_tiktok", "video_description_for_instagram"):
+                        val = s.get(field)
+                        if val and isinstance(val, str):
+                            s[field] = hindi_transliterator.transliterate_text(val)
+            except Exception as e:
+                print(f"   ⚠️ Hinglish transliteration on metadata failed: {e}")
 
         # Aggregate cost across both passes.
         cost_analysis = None
@@ -2583,6 +2614,14 @@ class TranscriptionTestRequest(BaseModel):
     model: Optional[str] = "whisper-large-v3"
 
 
+class S3TestRequest(BaseModel):
+    endpoint_url: Optional[str] = None
+    bucket_name: Optional[str] = None
+    access_key: Optional[str] = None
+    secret_key: Optional[str] = None
+    region: Optional[str] = "auto"
+
+
 class YouTubeCredentialsRequest(BaseModel):
     client_id: str
     client_secret: str
@@ -2807,6 +2846,34 @@ async def test_transcription_endpoint(req: TranscriptionTestRequest):
             "ok": False,
             "status": "failed",
             "message": f"Network error connecting to Groq: {str(e)}",
+        }
+
+
+@router.post("/api/s3/test")
+async def test_s3_endpoint(req: S3TestRequest):
+    import s3_uploader
+    try:
+        res = s3_uploader.test_s3_connection(
+            endpoint_url=req.endpoint_url,
+            bucket_name=req.bucket_name,
+            access_key=req.access_key,
+            secret_key=req.secret_key,
+            region=req.region,
+        )
+        if res is False:
+            raise ValueError("S3 connection test failed.")
+        database.set_setting("s3_connection_status", "connected")
+        return {
+            "ok": True,
+            "status": "connected",
+            "message": "Successfully connected to S3-compatible storage!",
+        }
+    except Exception as e:
+        database.set_setting("s3_connection_status", "failed")
+        return {
+            "ok": False,
+            "status": "failed",
+            "message": f"S3 connection test failed: {str(e)}",
         }
 
 
@@ -3036,6 +3103,21 @@ def cancel_active_job(job_id: str):
             pass
 
 
+def _canonical_clip_file(output_dir, base_name, index):
+    clean = f"{base_name}_clip_{index + 1}.mp4"
+    try:
+        derived = (glob.glob(os.path.join(output_dir, f"subtitled_*_{clean}"))
+                   + glob.glob(os.path.join(output_dir, f"recut_*_{clean}"))
+                   + glob.glob(os.path.join(output_dir, f"hooked_*_{clean}"))
+                   + glob.glob(os.path.join(output_dir, f"hook_{clean}"))
+                   + glob.glob(os.path.join(output_dir, f"wm_*{clean}")))
+    except Exception:
+        derived = []
+    if not derived:
+        return clean
+    return os.path.basename(max(derived, key=os.path.getmtime))
+
+
 @router.get("/api/history")
 async def get_local_history():
     out_dir = os.environ.get("OUTPUT_DIR", "output")
@@ -3060,18 +3142,33 @@ async def get_local_history():
                 created_iso = datetime.datetime.fromtimestamp(
                     os.path.getmtime(job_path), datetime.timezone.utc
                 ).isoformat()
+                base_name = meta_files[0].replace('_metadata.json', '')
                 for idx, clip in enumerate(shorts):
-                    v_url = clip.get("video_url") or f"/videos/{entry}/{meta_files[0].replace('_metadata.json', '')}_clip_{idx+1}.mp4"
-                    fn = os.path.basename(v_url)
+                    canonical_fn = _canonical_clip_file(job_path, base_name, idx)
+                    v_url = f"/videos/{entry}/{canonical_fn}"
+                    fn = canonical_fn
+                    title = (clip.get("video_title_for_youtube_short")
+                             or clip.get("title")
+                             or clip.get("viral_hook_text")
+                             or f"Clip {idx+1}")
+                    download_url = v_url
+                    try:
+                        import s3_uploader
+                        if s3_uploader.is_s3_enabled():
+                            s3_url = s3_uploader.get_presigned_download_url_for_clip(entry, fn)
+                            if s3_url:
+                                download_url = s3_url
+                    except Exception:
+                        pass
                     videos.append({
                         "id": f"{entry}_{idx}",
                         "job_id": entry,
                         "clip_index": idx,
-                        "title": clip.get("title") or clip.get("video_title_for_youtube_short") or f"Clip {idx+1}",
+                        "title": title,
                         "video_url": v_url,
                         "filename": fn,
                         "created_at": created_iso,
-                        "download_url": v_url,
+                        "download_url": download_url,
                     })
             except Exception:
                 continue
@@ -3611,6 +3708,20 @@ if __name__ == '__main__':
                         # hook, captions) so the file is complete when it is
                         # announced, never one that ffmpeg is still writing.
                         print(f"CLIP_READY {i} {os.path.basename(served)}")
+                        clip['video_url'] = f"/videos/{os.path.basename(output_dir)}/{os.path.basename(served)}"
+                        clip['filename'] = os.path.basename(served)
+                        try:
+                            import s3_uploader
+                            if s3_uploader.is_s3_enabled():
+                                s3_key = f"{os.path.basename(output_dir)}/{os.path.basename(served)}"
+                                threading.Thread(
+                                    target=s3_uploader.upload_file_to_s3,
+                                    args=(served, s3_uploader.get_s3_bucket(), s3_key),
+                                    daemon=True
+                                ).start()
+                                clip['s3_key'] = s3_key
+                        except Exception as e:
+                            print(f"   ⚠️ S3 background upload error: {e}")
                     return success
                 finally:
                     if os.path.exists(clip_temp_path):
@@ -3654,12 +3765,8 @@ if __name__ == '__main__':
                 except Exception as e:
                     print(f"   ❌ Clip {i+1} failed again: {type(e).__name__}: {e}")
 
-            # Persist per-clip render results added by the workers (auto_hook)
-            # so the editor can see what is already burned into each clip.
-            if any('auto_hook' in c or 'hook_grounding' in c for c in shorts):
-                # Atomic: the dashboard is already reading this file for the
-                # clips announced above (CLIP_READY).
-                write_json_atomic(metadata_file, clips_data, indent=2)
+            # Persist per-clip render results added by the workers
+            write_json_atomic(metadata_file, clips_data, indent=2)
 
     # Clean up original if requested
     if args.url and not args.keep_original and os.path.exists(input_video):

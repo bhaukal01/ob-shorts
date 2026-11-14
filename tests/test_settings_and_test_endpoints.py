@@ -170,3 +170,41 @@ def test_settings_get_and_put(client):
     assert settings["transcription_provider"] == "groq"
     assert settings["groq_api_key"] == "gsk_live_123"
     assert settings["groq_whisper_model"] == "whisper-large-v3"
+
+
+def test_s3_test_endpoint_success(client, monkeypatch):
+    import s3_uploader
+    monkeypatch.setattr(s3_uploader, "test_s3_connection", lambda **kwargs: (True, "S3 connection successful. Bucket accessible."))
+
+    res = client.post("/api/s3/test", json={
+        "endpoint_url": "https://fake.r2.cloudflarestorage.com",
+        "bucket_name": "test-bucket",
+        "access_key": "fake_key",
+        "secret_key": "fake_secret",
+        "region": "auto",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert "successful" in data["message"].lower()
+    assert database.get_setting("s3_connection_status") == "connected"
+
+
+def test_s3_test_endpoint_failure(client, monkeypatch):
+    import s3_uploader
+    def fail(**kwargs):
+        raise ValueError("Invalid S3 credentials")
+    monkeypatch.setattr(s3_uploader, "test_s3_connection", fail)
+
+    res = client.post("/api/s3/test", json={
+        "endpoint_url": "https://fake.r2.cloudflarestorage.com",
+        "bucket_name": "test-bucket",
+        "access_key": "bad_key",
+        "secret_key": "bad_secret",
+        "region": "auto",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is False
+    assert database.get_setting("s3_connection_status") == "failed"
+

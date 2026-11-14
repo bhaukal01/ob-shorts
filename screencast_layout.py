@@ -172,8 +172,13 @@ def detect_faces_full_res(frame):
 
     h, w, _ = frame.shape
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    detector = getattr(m, 'face_detection', None)
+    if detector is None and hasattr(m, '_get_face_detector'):
+        detector = m._get_face_detector()
+    if detector is None:
+        return []
     with m.DETECT_LOCK:
-        results = m.face_detection.process(rgb)
+        results = detector.process(rgb)
     if not results.detections:
         return []
 
