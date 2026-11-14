@@ -30,6 +30,11 @@ Turn long videos and live streams into viral 9:16 Shorts, TikToks, and Instagram
 - 🔴 **Live Stream Tracker & Real-Time Peak Clipper**:
   - Dedicated **Live Streams** tab to track active YouTube & Twitch channel streams.
   - Rolling 5-minute chunk monitoring with audio loudness peak detection, faster-whisper transcription, LLM peak scoring, and automatic vertical clip cutting.
+- ⚡ **Ongoing Tasks & Active Jobs Management**:
+  - Live progress monitoring directly in the **Video Library & Active Jobs** tab.
+  - One-click **"Resume Live View"** to return to any ongoing or queued project at any time, even after clicking "New Project".
+  - Manual deletion with immediate removal from library listings and a 24-hour delayed grace period before purging from disk.
+  - Videos are kept indefinitely by default (`JOB_RETENTION_SECONDS=0`) and never deleted without user action.
 - 🚀 **100% Dokploy & Single-Domain Ready**:
   - Production Nginx reverse proxy routes all frontend SPA routes, `/api/` endpoints, `/videos/` streams, `/thumbnails/`, and `/render/` requests through a **single domain** with zero CORS hassles.
   - Optimized for 8 vCPU / 16 GB RAM VPS instances.
@@ -213,6 +218,7 @@ claude mcp add openshorts -- python mcp_stdio.py
 | `FFMPEG_THREADS` | `3` | Max CPU threads per FFmpeg encode process |
 | `DETECT_STRIDE` | `6` | Frame skipping stride for scene detection |
 | `SCENE_ENGINE` | `pyscenedetect` | Scene detection library |
+| `JOB_RETENTION_SECONDS` | `0` | Default 0 = retained indefinitely until manual deletion (24h purge grace period) |
 | `GEMINI_API_KEY` | - | Google Gemini API key (optional if using OpenAI LLM) |
 
 ---

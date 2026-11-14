@@ -626,20 +626,33 @@ function App() {
     handleClipStateChange(index, { activeLayers: null, serverVideoFile: newFile });
   };
 
-  // Reopen an archived project from the History tab: the backend re-downloads
-  // its files from R2 into the server's working dir and returns the full state.
-  const restoreProject = async (projectJobId) => {
-    const data = await apiJson(`/api/projects/${projectJobId}/restore`, { method: 'POST' });
+  // Reopen an archived project or ongoing job from the History tab.
+  const restoreProject = async (projectJobId, projectStatus = 'completed') => {
+    let data;
+    try {
+      data = await apiJson(`/api/projects/${projectJobId}/restore`, { method: 'POST' });
+    } catch (e) {
+      // Fallback to /api/status if restore endpoint failed
+      data = await apiJson(`/api/status/${projectJobId}`);
+    }
     flushClipState();
     setProjectState(data.project_state || null);
     setNoSource(true);
-    setJobId(data.job_id);
+    setJobId(data.job_id || projectJobId);
     setResults(data.result || null);
-    setLogs(['♻️ Project restored from your library.']);
-    setLogTimes([Date.now() / 1000]);
     setProcessingMedia(null);
     setQualityGate(null);
-    setStatus('complete');
+
+    const isLive = (data.status === 'processing' || data.status === 'queued' || projectStatus === 'processing' || projectStatus === 'queued');
+    if (isLive) {
+      setStatus('processing');
+      setLogs(data.logs?.length ? data.logs : ['⚡ Resuming live view of ongoing project…']);
+      setLogTimes(data.log_times?.length ? data.log_times : [Date.now() / 1000]);
+    } else {
+      setStatus('complete');
+      setLogs(data.logs?.length ? data.logs : ['♻️ Project restored from your library.']);
+      setLogTimes([Date.now() / 1000]);
+    }
     setActiveTab('dashboard');
   };
 

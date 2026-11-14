@@ -134,12 +134,12 @@ for _stream in (sys.stdout, sys.stderr):
 # self-hosted BYOK app does today (no extra dependencies required).
 BILLING_ENABLED = os.environ.get("BILLING_ENABLED", "").lower() in ("1", "true", "yes")
 
-# Job/file retention (issue #46). Self-host defaults to 24h: the 1h sweep kept
-# deleting finished projects under users who never touched their env, and the
-# OUTPUT_MAX_GB / UPLOADS_MAX_GB caps below already bound the disk. Cloud keeps
-# the tight default because clips are archived to R2 as soon as a job finishes.
+# Job/file retention (issue #46). Self-host defaults to 0 (never auto-deleted).
+# Videos are only deleted when deleted manually by the user, and then purged
+# from disk after a 24-hour grace period. Cloud keeps the tight default because
+# clips are archived to R2 as soon as a job finishes.
 JOB_RETENTION_SECONDS = int(
-    os.environ.get("JOB_RETENTION_SECONDS", "3600" if BILLING_ENABLED else "86400")
+    os.environ.get("JOB_RETENTION_SECONDS", "3600" if BILLING_ENABLED else "0")
 )
 # The retained download of a URL job (--keep-original) is the one artifact that
 # is a full copy of someone else's video rather than something we made, so it
@@ -2793,7 +2793,8 @@ def _not_a_job_dir(name) -> bool:
 
 
 def _sweep_expired_job_dirs(now):
-    """Drop job dirs older than JOB_RETENTION_SECONDS, except live jobs."""
+    """Drop job dirs older than JOB_RETENTION_SECONDS (if enabled), and drop manually deleted jobs after 24h grace period."""
+    del_grace_seconds = 86400  # 24 hours
     for job_id in os.listdir(OUTPUT_DIR):
         # Not a job: the thumbnails dir backs a StaticFiles mount, so
         # deleting it would 500 every /thumbnails request until reboot.
@@ -2802,6 +2803,22 @@ def _sweep_expired_job_dirs(now):
         job_path = os.path.join(OUTPUT_DIR, job_id)
         if not os.path.isdir(job_path):
             continue
+
+        del_marker = os.path.join(job_path, ".deleted")
+        if os.path.exists(del_marker):
+            try:
+                # If deleted manually, purge from disk after 24 hours
+                if now - os.path.getmtime(del_marker) >= del_grace_seconds:
+                    print(f"🧹 Purging manually deleted job after 24h grace period: {job_id}")
+                    shutil.rmtree(job_path, ignore_errors=True)
+                    jobs.pop(job_id, None)
+            except OSError:
+                pass
+            continue
+
+        if JOB_RETENTION_SECONDS <= 0:
+            continue
+
         try:
             expired = now - os.path.getmtime(job_path) > JOB_RETENTION_SECONDS
         except OSError:
@@ -2816,6 +2833,8 @@ def _sweep_expired_job_dirs(now):
 def _sweep_expired_uploads(now):
     """Drop source uploads older than JOB_RETENTION_SECONDS, except the source
     of a job that is still queued or running."""
+    if JOB_RETENTION_SECONDS <= 0:
+        return
     for filename in os.listdir(UPLOAD_DIR):
         file_path = os.path.join(UPLOAD_DIR, filename)
         try:
@@ -2897,7 +2916,7 @@ def _sweep_retained_sources(now=None):
     the user's own file and ages out with the job like everything else. Yields
     the job ids it emptied. A no-op unless the knob is set below the job clock.
     """
-    if SOURCE_RETENTION_SECONDS >= JOB_RETENTION_SECONDS:
+    if JOB_RETENTION_SECONDS <= 0 or SOURCE_RETENTION_SECONDS >= JOB_RETENTION_SECONDS:
         return
     now = time.time() if now is None else now
     for job_id in os.listdir(OUTPUT_DIR):
@@ -2951,7 +2970,7 @@ async def cleanup_jobs():
                     if jdata.get("status") in ("completed", "failed")
                     and jdata.get("output_dir")
                     and os.path.isdir(jdata["output_dir"])
-                    and now - os.path.getmtime(jdata["output_dir"]) > JOB_RETENTION_SECONDS
+                    and (JOB_RETENTION_SECONDS > 0 and now - os.path.getmtime(jdata["output_dir"]) > JOB_RETENTION_SECONDS)
                 ]
                 for jid in saas_expired:
                     del saas_jobs[jid]
@@ -4084,6 +4103,82 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 import main as _main
+
+def _provide_active_jobs():
+    result = []
+    for jid, jdata in list(jobs.items()):
+        status = jdata.get('status')
+        if status in ('queued', 'processing'):
+            job_dir = os.path.join(OUTPUT_DIR, jid)
+            if os.path.exists(os.path.join(job_dir, ".deleted")):
+                continue
+            title = jdata.get('title')
+            info_file = os.path.join(job_dir, "_project_info.json")
+            if os.path.exists(info_file):
+                try:
+                    with open(info_file, "r", encoding="utf-8") as f:
+                        idata = json.load(f)
+                        if idata.get("title"):
+                            title = idata.get("title")
+                except Exception:
+                    pass
+            if not title:
+                cmd = jdata.get('cmd') or []
+                for i, arg in enumerate(cmd):
+                    if arg in ('-u', '--url') and i + 1 < len(cmd):
+                        title = cmd[i + 1]
+                        break
+                    if arg in ('-i', '--input') and i + 1 < len(cmd):
+                        title = os.path.basename(cmd[i + 1])
+                        break
+            if not title:
+                title = f"Project {jid[:8]}"
+
+            created_iso = datetime.fromtimestamp(
+                jdata.get('submitted_at', time.time()), timezone.utc
+            ).isoformat()
+
+            latest_log = ""
+            log_list = jdata.get('logs') or []
+            if log_list:
+                latest_log = str(log_list[-1])
+
+            ready_count = len(jdata.get('ready_files', {}))
+            if not ready_count and jdata.get('result') and jdata['result'].get('clips'):
+                ready_count = len(jdata['result']['clips'])
+
+            result.append({
+                "job_id": jid,
+                "title": title,
+                "status": status,
+                "is_active": True,
+                "created_at": created_iso,
+                "clip_count": ready_count,
+                "latest_log": latest_log,
+            })
+    return result
+
+def _cancel_active_job(job_id):
+    job = jobs.get(job_id)
+    if job:
+        proc = job.get('_process')
+        if proc:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        job['status'] = 'cancelled'
+        _running_jobs.discard(job_id)
+    job_dir = os.path.join(OUTPUT_DIR, job_id)
+    if os.path.exists(job_dir):
+        try:
+            with open(os.path.join(job_dir, ".deleted"), "w", encoding="utf-8") as f:
+                f.write(datetime.now(timezone.utc).isoformat())
+        except Exception:
+            pass
+
+_main.register_active_jobs_provider(_provide_active_jobs)
+_main.register_job_canceller(_cancel_active_job)
 app.include_router(_main.router)
 
 # Cloud mode: attach middleware + routers at import time (before the app serves).
@@ -4684,6 +4779,8 @@ async def _run_main(job_id, cmd, env, tick=None):
         cwd=os.getcwd(),
         preexec_fn=_lower_priority,
     )
+    if job_id in jobs:
+        jobs[job_id]['_process'] = process
     # We need to capture logs in a thread because Popen isn't async
     t_log = threading.Thread(target=enqueue_output, args=(process.stdout, job_id))
     t_log.daemon = True
@@ -4691,6 +4788,12 @@ async def _run_main(job_id, cmd, env, tick=None):
 
     last_heartbeat = time.time()
     while process.poll() is None:
+        if os.path.exists(os.path.join(OUTPUT_DIR, job_id, ".deleted")):
+            try:
+                process.kill()
+            except Exception:
+                pass
+            return -9
         try:
             await asyncio.sleep(2)
         except asyncio.CancelledError:
@@ -5828,10 +5931,29 @@ async def process_endpoint(
     # caller connected to.
     api_base = os.environ.get("PUBLIC_API_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
 
+    job_title = None
+    if url:
+        job_title = url
+    elif file and hasattr(file, "filename") and file.filename:
+        job_title = file.filename
+    elif upload_slot and upload_slot.get("filename"):
+        job_title = upload_slot.get("filename")
+    elif thumb_session:
+        job_title = thumb_session.get("title") or "Thumbnail Studio Project"
+    if not job_title:
+        job_title = f"Project {job_id[:8]}"
+
+    try:
+        with open(os.path.join(job_output_dir, "_project_info.json"), "w", encoding="utf-8") as f:
+            json.dump({"title": job_title, "status": "queued"}, f)
+    except Exception:
+        pass
+
     # Enqueue Job
     _end_submission(job_id)  # from here the job counts in `jobs` itself
     jobs[job_id] = {
         'status': 'queued',
+        'title': job_title,
         'logs': _TimedLog([f"Job {job_id} queued."]),
         'cmd': cmd,
         'env': env,
@@ -5963,6 +6085,10 @@ def _presented_status(job_id, job):
 
 @app.get("/api/status/{job_id}")
 async def get_status(job_id: str, request: Request):
+    job_path = os.path.join(OUTPUT_DIR, job_id)
+    if os.path.exists(os.path.join(job_path, ".deleted")):
+        raise HTTPException(status_code=404, detail="Job not found")
+
     job = jobs.get(job_id)
     if job is None:
         job = _job_view_from_disk(job_id)
@@ -6187,8 +6313,44 @@ _JOB_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 @app.post("/api/projects/{job_id}/restore")
 async def restore_project(job_id: str, request: Request):
+    job_path = os.path.join(OUTPUT_DIR, job_id)
+    if os.path.exists(os.path.join(job_path, ".deleted")):
+        raise HTTPException(status_code=404, detail="Project not found or deleted")
+
     if not BILLING_ENABLED:
-        raise HTTPException(status_code=404, detail="Not found")
+        if job_id in jobs:
+            j = jobs[job_id]
+            title = j.get("title") or f"Project {job_id[:8]}"
+            return {
+                "job_id": job_id,
+                "status": j.get("status", "completed"),
+                "result": _with_download_urls(j.get("result")),
+                "project_state": None,
+                "title": title,
+                "logs": _visible_logs_timed(j.get("logs", []))[0] if j.get("logs") else [],
+            }
+
+        rec = _job_view_from_disk(job_id)
+        if rec:
+            title = f"Project {job_id[:8]}"
+            meta_files = glob.glob(os.path.join(job_path, "*_metadata.json"))
+            if meta_files:
+                try:
+                    with open(meta_files[0], "r", encoding="utf-8") as f:
+                        m = json.load(f)
+                    title = m.get("video_title") or m.get("title") or title
+                except Exception:
+                    pass
+            return {
+                "job_id": job_id,
+                "status": rec.get("status", "completed"),
+                "result": _with_download_urls(rec.get("result")),
+                "project_state": None,
+                "title": title,
+                "logs": ["♻️ Project restored from disk."],
+            }
+        raise HTTPException(status_code=404, detail="Project not found")
+
     from sqlalchemy import select
     from cloud.auth import get_current_user_required
     from cloud.models import Project

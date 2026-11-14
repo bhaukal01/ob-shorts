@@ -2884,14 +2884,46 @@ async def toggle_live_monitor_endpoint(monitor_id: int):
     return {"status": "success", "auto_clip": new_auto_clip}
 
 
+_active_jobs_provider = None
+_job_canceller = None
+
+def register_active_jobs_provider(fn):
+    global _active_jobs_provider
+    _active_jobs_provider = fn
+
+def register_job_canceller(fn):
+    global _job_canceller
+    _job_canceller = fn
+
+def get_active_jobs():
+    if _active_jobs_provider:
+        try:
+            return _active_jobs_provider()
+        except Exception:
+            return []
+    return []
+
+def cancel_active_job(job_id: str):
+    if _job_canceller:
+        try:
+            return _job_canceller(job_id)
+        except Exception:
+            pass
+
+
 @router.get("/api/history")
 async def get_local_history():
     out_dir = os.environ.get("OUTPUT_DIR", "output")
     videos = []
     if os.path.exists(out_dir):
         for entry in sorted(os.listdir(out_dir), reverse=True):
+            if entry == "thumbnails" or entry.startswith("."):
+                continue
             job_path = os.path.join(out_dir, entry)
             if not os.path.isdir(job_path):
+                continue
+            # If manually deleted, exclude immediately
+            if os.path.exists(os.path.join(job_path, ".deleted")):
                 continue
             meta_files = [f for f in os.listdir(job_path) if f.endswith("_metadata.json")]
             if not meta_files:
@@ -2925,14 +2957,56 @@ async def get_local_history():
 async def get_local_projects():
     out_dir = os.environ.get("OUTPUT_DIR", "output")
     projects = []
+    seen_ids = set()
+
+    # 1. Include active/ongoing jobs from memory
+    for aj in get_active_jobs():
+        jid = aj.get("job_id")
+        if jid:
+            seen_ids.add(jid)
+            projects.append(aj)
+
+    # 2. Disk scan for completed or resumed jobs
     if os.path.exists(out_dir):
         for entry in sorted(os.listdir(out_dir), reverse=True):
+            if entry in seen_ids or entry == "thumbnails" or entry.startswith("."):
+                continue
             job_path = os.path.join(out_dir, entry)
             if not os.path.isdir(job_path):
                 continue
+            # Exclude manually deleted projects immediately
+            if os.path.exists(os.path.join(job_path, ".deleted")):
+                continue
+
             meta_files = [f for f in os.listdir(job_path) if f.endswith("_metadata.json")]
             if not meta_files:
+                # Check for in-flight / resume / project info file on disk
+                info_file = os.path.join(job_path, "_project_info.json")
+                resume_file = os.path.join(job_path, ".resume.json")
+                if os.path.exists(info_file) or os.path.exists(resume_file):
+                    title = f"Project {entry[:8]}"
+                    if os.path.exists(info_file):
+                        try:
+                            with open(info_file, "r", encoding="utf-8") as f:
+                                idata = json.load(f)
+                                if idata.get("title"):
+                                    title = idata.get("title")
+                        except Exception:
+                            pass
+                    created_iso = datetime.datetime.fromtimestamp(
+                        os.path.getmtime(job_path), datetime.timezone.utc
+                    ).isoformat()
+                    projects.append({
+                        "job_id": entry,
+                        "title": title,
+                        "status": "processing",
+                        "is_active": True,
+                        "created_at": created_iso,
+                        "clip_count": 0,
+                    })
+                    seen_ids.add(entry)
                 continue
+
             try:
                 with open(os.path.join(job_path, meta_files[0]), "r", encoding="utf-8") as f:
                     meta = json.load(f)
@@ -2943,12 +3017,37 @@ async def get_local_projects():
                 projects.append({
                     "job_id": entry,
                     "title": title,
+                    "status": "completed",
+                    "is_active": False,
                     "created_at": created_iso,
                     "clip_count": len(meta.get("shorts", [])),
                 })
+                seen_ids.add(entry)
             except Exception:
                 continue
     return {"projects": projects}
+
+
+@router.delete("/api/projects/{job_id}")
+async def delete_project_endpoint(job_id: str):
+    cancel_active_job(job_id)
+    out_dir = os.environ.get("OUTPUT_DIR", "output")
+    job_path = os.path.join(out_dir, job_id)
+    if os.path.isdir(job_path):
+        del_marker = os.path.join(job_path, ".deleted")
+        try:
+            with open(del_marker, "w", encoding="utf-8") as f:
+                f.write(datetime.datetime.now(datetime.timezone.utc).isoformat())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to mark project as deleted: {e}")
+    else:
+        try:
+            os.makedirs(job_path, exist_ok=True)
+            with open(os.path.join(job_path, ".deleted"), "w", encoding="utf-8") as f:
+                f.write(datetime.datetime.now(datetime.timezone.utc).isoformat())
+        except Exception:
+            pass
+    return {"status": "deleted", "job_id": job_id}
 
 
 if __name__ == '__main__':
@@ -3117,6 +3216,13 @@ if __name__ == '__main__':
     if not os.path.exists(input_video):
         print(f"❌ Input file not found: {input_video}")
         exit(1)
+
+    try:
+        if output_dir and os.path.isdir(output_dir):
+            with open(os.path.join(output_dir, "_project_info.json"), "w", encoding="utf-8") as f:
+                json.dump({"title": video_title, "status": "processing", "started_at": script_start_time}, f)
+    except Exception:
+        pass
 
     # Quota-wall offer: only the first N minutes were paid for (see
     # cap_source_duration). Must run before anything reads the file.
