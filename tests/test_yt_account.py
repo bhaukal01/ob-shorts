@@ -368,6 +368,15 @@ def test_no_account_means_no_cookie_file(monkeypatch):
     assert s.path is None and s.account is None and not s.spent
 
 
+def test_accounts_supports_file_path(tmp_path, monkeypatch):
+    ck_file = tmp_path / "cookies.txt"
+    ck_file.write_text(NETSCAPE, encoding="utf-8")
+    monkeypatch.setenv("YOUTUBE_COOKIES", str(ck_file))
+    res = yt_account.accounts()
+    assert len(res) == 1
+    assert res[0].strip() == NETSCAPE.strip()
+
+
 def test_consecutive_videos_take_consecutive_accounts(two_accounts):
     used = []
     for _ in range(4):

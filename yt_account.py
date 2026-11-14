@@ -280,14 +280,22 @@ def request(account=0):
 
 def accounts(env=None):
     """The cookie files configured, in order: YOUTUBE_COOKIES, then
-    YOUTUBE_COOKIES_2 .. _9. Empty ones are skipped."""
+    YOUTUBE_COOKIES_2 .. _9. Empty ones are skipped.
+    Supports either raw Netscape cookie text or a path to a cookies.txt file."""
     env = os.environ if env is None else env
     names = ["YOUTUBE_COOKIES"] + [f"YOUTUBE_COOKIES_{i}" for i in range(2, MAX_ACCOUNTS + 1)]
     out = []
     for name in names:
         text = str(env.get(name) or "").strip()
         if text:
-            out.append(text + "\n")
+            if os.path.isfile(text):
+                try:
+                    with open(text, "r", encoding="utf-8") as f:
+                        text = f.read().strip()
+                except OSError:
+                    pass
+            if text:
+                out.append(text + "\n")
     return out
 
 
