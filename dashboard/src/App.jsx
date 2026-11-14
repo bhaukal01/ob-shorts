@@ -6,24 +6,14 @@ import McpConnectCard from './components/McpConnectCard';
 import ResultCard from './components/ResultCard';
 import ProcessingAnimation from './components/ProcessingAnimation';
 import SegmentedControl from './components/ui/SegmentedControl';
-import ScheduleWeekModal from './components/ScheduleWeekModal';
-import ClipEditor from './components/ClipEditor';
-import ReframeEditor from './components/ReframeEditor';
 import UsageMeter from './components/UsageMeter';
-import TopUpModal from './components/TopUpModal';
 import WatermarkModal, { watermarkNoticeDismissed } from './components/WatermarkModal';
 import { getApiUrl } from './config';
 import StarBanner from './components/StarBanner';
-import PlanChoiceModal from './components/PlanChoiceModal';
 import ClipTutorial from './components/ClipTutorial';
 import OnboardingSurvey from './components/OnboardingSurvey';
-import TrialUpgradeModal from './components/TrialUpgradeModal';
-import LoginModal from './components/LoginModal';
 import TrialGate from './components/TrialGate';
 import AdvancedBanner from './components/AdvancedBanner';
-import HistoryTab from './components/HistoryTab';
-import LiveStreamTab from './components/LiveStreamTab';
-import AutopilotTab from './components/AutopilotTab';
 import ProfileMenu from './components/ProfileMenu';
 import Modal from './components/ui/Modal';
 import { useAuth } from './contexts/AuthContext';
@@ -32,6 +22,17 @@ import { track } from './lib/analytics';
 import { readConnectReturn, stripConnectReturn } from './lib/connectReturn';
 import { rememberTabAfterLogin } from './lib/tabAfterLogin';
 import { JobPollError, pollFailureAction } from './lib/jobPoll';
+
+// Code-split heavy interactive subcomponents & modals for ultra-fast initial load
+const LiveStreamTab = React.lazy(() => import('./components/LiveStreamTab'));
+const HistoryTab = React.lazy(() => import('./components/HistoryTab'));
+const ClipEditor = React.lazy(() => import('./components/ClipEditor'));
+const ReframeEditor = React.lazy(() => import('./components/ReframeEditor'));
+const ScheduleWeekModal = React.lazy(() => import('./components/ScheduleWeekModal'));
+const PlanChoiceModal = React.lazy(() => import('./components/PlanChoiceModal'));
+const TrialUpgradeModal = React.lazy(() => import('./components/TrialUpgradeModal'));
+const TopUpModal = React.lazy(() => import('./components/TopUpModal'));
+const LoginModal = React.lazy(() => import('./components/LoginModal'));
 
 // Enhanced "Encryption" using XOR + Base64 with a Salt
 // This is better than plain Base64 but still client-side.
@@ -2907,7 +2908,9 @@ function App() {
           {activeTab === 'live' && (
             <div className="h-full overflow-y-auto custom-scrollbar animate-fade">
               <div className="max-w-6xl mx-auto p-4 sm:p-6 md:p-8">
-                <LiveStreamTab />
+                <React.Suspense fallback={<div className="p-12 flex justify-center text-muted"><Loader2 className="animate-spin text-brass" size={20} /></div>}>
+                  <LiveStreamTab />
+                </React.Suspense>
               </div>
             </div>
           )}
@@ -2916,7 +2919,9 @@ function App() {
           {activeTab === 'history' && (
             <div className="h-full overflow-y-auto custom-scrollbar animate-fade">
               <div className="max-w-6xl mx-auto p-4 sm:p-6 md:p-8">
-                <HistoryTab onReopenProject={restoreProject} />
+                <React.Suspense fallback={<div className="p-12 flex justify-center text-muted"><Loader2 className="animate-spin text-brass" size={20} /></div>}>
+                  <HistoryTab onReopenProject={restoreProject} />
+                </React.Suspense>
               </div>
             </div>
           )}
@@ -3090,14 +3095,22 @@ function App() {
                   </button>
                   {logsVisible && (
                     <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto font-mono text-[11px] sm:text-xs space-y-1.5 custom-scrollbar text-muted break-words">
-                      {logs.map((log, i) => (
-                        <div key={i} className={`flex gap-2 ${log.toLowerCase().includes('error') ? 'text-danger' : 'text-muted'}`}>
-                          <span className="text-muted opacity-50 shrink-0 hidden sm:inline tabular-nums">
-                            {logTimes[i] ? new Date(logTimes[i] * 1000).toLocaleTimeString() : ''}
-                          </span>
-                          <span className="min-w-0 break-words">{log}</span>
+                      {logs.length > 250 && (
+                        <div className="text-[10px] text-muted italic border-b border-rule pb-1 mb-1">
+                          Showing latest 250 logs ({logs.length - 250} older entries hidden for performance)...
                         </div>
-                      ))}
+                      )}
+                      {(logs.length > 250 ? logs.slice(-250) : logs).map((log, sliceIdx) => {
+                        const originalIdx = logs.length > 250 ? logs.length - 250 + sliceIdx : sliceIdx;
+                        return (
+                          <div key={originalIdx} className={`flex gap-2 ${log.toLowerCase().includes('error') ? 'text-danger' : 'text-muted'}`}>
+                            <span className="text-muted opacity-50 shrink-0 hidden sm:inline tabular-nums">
+                              {logTimes[originalIdx] ? new Date(logTimes[originalIdx] * 1000).toLocaleTimeString() : ''}
+                            </span>
+                            <span className="min-w-0 break-words">{log}</span>
+                          </div>
+                        );
+                      })}
                       {status === 'processing' && (
                         <div className="animate-pulse text-brass">_</div>
                       )}
@@ -3420,16 +3433,6 @@ function App() {
         </div>
       </Modal>
 
-      <ScheduleWeekModal
-        isOpen={showScheduleWeek}
-        onClose={() => setShowScheduleWeek(false)}
-        clips={results?.clips || []}
-        jobId={jobId}
-        uploadPostKey={uploadPostKey}
-        uploadUserId={uploadUserId}
-        isManaged={isManaged}
-      />
-
       {/* Pre-flight quality gate */}
       {qualityGate && (
         <Modal isOpen={true} onClose={() => setQualityGate(null)} size="md" eyebrow="HEADS UP" title="low source quality">
@@ -3456,26 +3459,6 @@ function App() {
         </Modal>
       )}
 
-
-      {editingClip !== null && results?.clips?.[editingClip] && (
-        <ClipEditor
-          jobId={jobId}
-          clipIndex={editingClip}
-          clipTitle={results.clips[editingClip].video_title_for_youtube_short || ''}
-          onClose={() => setEditingClip(null)}
-          onRerendered={handleClipRerendered}
-        />
-      )}
-      {reframingClip !== null && results?.clips?.[reframingClip] && (
-        <ReframeEditor
-          jobId={jobId}
-          clipIndex={reframingClip}
-          clipTitle={results.clips[reframingClip].video_title_for_youtube_short || ''}
-          onClose={() => setReframingClip(null)}
-          onReframed={handleClipRerendered}
-        />
-      )}
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} queued={typeof peekPendingJob()?.data?.payload === 'string'} />}
       {showSurvey && <OnboardingSurvey onDone={() => setSurveyDone(true)} />}
       {tutorialPhase && !showSurvey && (
         <ClipTutorial
@@ -3487,7 +3470,6 @@ function App() {
           onDismissCelebrate={finishTutorial}
         />
       )}
-      {showPlanChoice && <PlanChoiceModal onClose={() => setShowPlanChoice(false)} />}
       {showWmNotice && (
         <WatermarkModal
           source="results"
@@ -3497,26 +3479,60 @@ function App() {
           onClose={() => setShowWmNotice(false)}
         />
       )}
-      {showTopUp && (
-        <TopUpModal
-          onClose={() => setShowTopUp(false)}
-          required={topUpInfo.required}
-          remaining={topUpInfo.remaining}
-          partialMinutes={topUpInfo.partialMinutes}
-          onPartial={topUpInfo.onPartial}
-          context={topUpInfo.context || 'wall'}
-          source={topUpInfo.source}
-          highlight={topUpInfo.highlight}
-          partialJob={topUpInfo.partialJob}
-        />
-      )}
-      {showTrialUpgrade && (
-        <TrialUpgradeModal
-          plan={plan}
-          onActivated={refreshMe}
-          onClose={() => setShowTrialUpgrade(false)}
-        />
-      )}
+
+      <React.Suspense fallback={null}>
+        {showScheduleWeek && (
+          <ScheduleWeekModal
+            isOpen={showScheduleWeek}
+            onClose={() => setShowScheduleWeek(false)}
+            clips={results?.clips || []}
+            jobId={jobId}
+            uploadPostKey={uploadPostKey}
+            uploadUserId={uploadUserId}
+            isManaged={isManaged}
+          />
+        )}
+        {editingClip !== null && results?.clips?.[editingClip] && (
+          <ClipEditor
+            jobId={jobId}
+            clipIndex={editingClip}
+            clipTitle={results.clips[editingClip].video_title_for_youtube_short || ''}
+            onClose={() => setEditingClip(null)}
+            onRerendered={handleClipRerendered}
+          />
+        )}
+        {reframingClip !== null && results?.clips?.[reframingClip] && (
+          <ReframeEditor
+            jobId={jobId}
+            clipIndex={reframingClip}
+            clipTitle={results.clips[reframingClip].video_title_for_youtube_short || ''}
+            onClose={() => setReframingClip(null)}
+            onReframed={handleClipRerendered}
+          />
+        )}
+        {showLogin && <LoginModal onClose={() => setShowLogin(false)} queued={typeof peekPendingJob()?.data?.payload === 'string'} />}
+        {showPlanChoice && <PlanChoiceModal onClose={() => setShowPlanChoice(false)} />}
+        {showTopUp && (
+          <TopUpModal
+            onClose={() => setShowTopUp(false)}
+            required={topUpInfo.required}
+            remaining={topUpInfo.remaining}
+            partialMinutes={topUpInfo.partialMinutes}
+            onPartial={topUpInfo.onPartial}
+            context={topUpInfo.context || 'wall'}
+            source={topUpInfo.source}
+            highlight={topUpInfo.highlight}
+            partialJob={topUpInfo.partialJob}
+          />
+        )}
+        {showTrialUpgrade && (
+          <TrialUpgradeModal
+            plan={plan}
+            onActivated={refreshMe}
+            onClose={() => setShowTrialUpgrade(false)}
+          />
+        )}
+      </React.Suspense>
     </div>
   );
 }

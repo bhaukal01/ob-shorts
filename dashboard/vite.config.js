@@ -9,6 +9,16 @@ const renderer = process.env.VITE_RENDER_TARGET || 'http://127.0.0.1:3100'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-icons': ['lucide-react'],
+        }
+      }
+    }
+  },
   server: {
     host: '0.0.0.0',
     allowedHosts: true,
