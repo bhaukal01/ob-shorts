@@ -1562,19 +1562,12 @@ function App() {
   };
   const tabLocked = (id) => tutorialLock && id !== 'dashboard';
 
-  // Shared footer links (landing, repo, pricing, contact) — same list in the
+  // Shared footer links (repo, pricing, contact) — same list in the
   // desktop rail and the mobile drawer, so they can never drift apart.
   const NavFooterLinks = ({ collapsed = false }) => (
     <>
       <a
-        href="#landing"
-        className="flex items-center gap-2 px-3 py-2 text-xs lowercase text-muted hover:text-ink2 transition-colors"
-      >
-        <Globe size={14} className="shrink-0" />
-        <span className={collapsed ? 'hidden lg:block truncate' : 'truncate'}>landing page</span>
-      </a>
-      <a
-        href="https://github.com/mutonby/openshorts"
+        href="https://github.com/bhaukal01/ob-shorts"
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-2 px-3 py-2 text-xs lowercase text-muted hover:text-ink2 transition-colors"
