@@ -3,9 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: openshorts-backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
       - CLIP_WORKERS=3
       - DETECT_STRIDE=6
@@ -26,9 +25,8 @@ services:
     build:
       context: ./dashboard
       target: prod
-    container_name: openshorts-frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3001}:80"
     restart: unless-stopped
     depends_on:
       - backend
@@ -37,9 +35,8 @@ services:
     build:
       context: .
       dockerfile: render-service/Dockerfile
-    container_name: openshorts-renderer
     ports:
-      - "3100:3100"
+      - "${RENDERER_PORT:-3100}:3100"
     volumes:
       - openshorts_output:/output
     env_file:

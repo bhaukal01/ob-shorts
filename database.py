@@ -16,22 +16,42 @@ from typing import Any, Dict, List, Optional
 _LOCK = threading.RLock()
 
 
+_RESOLVED_DB_PATH: Optional[str] = None
+
+
 def get_db_path() -> str:
-    """Resolve database path from DB_PATH env var or default to ./data/openshorts.db."""
+    """Resolve database path from DB_PATH env var or default to ./data/openshorts.db with fallback."""
+    global _RESOLVED_DB_PATH
+    if _RESOLVED_DB_PATH:
+        return _RESOLVED_DB_PATH
+
     custom = os.environ.get("DB_PATH")
     if custom:
-        path = custom
+        candidate = custom
     elif "PYTEST_CURRENT_TEST" in os.environ:
         import tempfile
-        path = os.path.join(tempfile.gettempdir(), "openshorts_pytest.db")
+        candidate = os.path.join(tempfile.gettempdir(), "openshorts_pytest.db")
     elif os.path.exists("/app") and os.path.isdir("/app"):
-        path = "/app/data/openshorts.db"
+        candidate = "/app/data/openshorts.db"
     else:
-        path = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "openshorts.db"))
-    
-    dir_path = os.path.dirname(os.path.abspath(path))
-    os.makedirs(dir_path, exist_ok=True)
-    return path
+        candidate = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "openshorts.db"))
+
+    dir_path = os.path.dirname(os.path.abspath(candidate))
+    try:
+        os.makedirs(dir_path, exist_ok=True)
+        # Test writeability
+        test_file = os.path.join(dir_path, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("ok")
+        os.remove(test_file)
+        _RESOLVED_DB_PATH = candidate
+    except Exception as e:
+        import tempfile
+        fallback = os.path.join(tempfile.gettempdir(), "openshorts.db")
+        print(f"⚠️ Warning: Database dir '{dir_path}' not writable ({e}). Using '{fallback}'.")
+        _RESOLVED_DB_PATH = fallback
+
+    return _RESOLVED_DB_PATH
 
 
 def get_connection() -> sqlite3.Connection:
