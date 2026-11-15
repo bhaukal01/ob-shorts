@@ -4157,23 +4157,20 @@ def _provide_active_jobs():
                 "latest_log": latest_log,
             })
 
-    # Surface actively recording/clipping live streams as ongoing projects
+    # Surface active live stream projects from stream_monitor
     try:
-        import database
-        for mon in database.list_live_monitors():
-            mon_status = mon.get("status")
-            if mon_status in ("recording", "clipping"):
-                mid = mon.get("id")
-                name = mon.get("channel_name") or mon.get("channel_url")
-                status_desc = "Recording live stream (5m rolling slice)..." if mon_status == "recording" else "Clipping & rendering peak moment..."
+        import stream_monitor
+        for sj in stream_monitor.get_active_stream_jobs():
+            if sj.get("status") in ("processing", "queued"):
                 result.append({
-                    "job_id": f"live_mon_{mid}",
-                    "title": f"🔴 [LIVE] {name}",
+                    "job_id": sj["job_id"],
+                    "title": sj.get("title") or "🔴 Live Stream",
                     "status": "processing",
                     "is_active": True,
-                    "created_at": mon.get("last_live") or mon.get("last_checked") or datetime.now(timezone.utc).isoformat(),
-                    "clip_count": 0,
-                    "latest_log": status_desc,
+                    "is_stream": True,
+                    "created_at": datetime.fromtimestamp(sj.get("submitted_at", time.time()), timezone.utc).isoformat(),
+                    "clip_count": len(sj.get("result", {}).get("clips", [])),
+                    "latest_log": sj.get("logs", ["Live recording active"])[-1] if sj.get("logs") else "",
                 })
     except Exception:
         pass
@@ -6160,6 +6157,12 @@ async def get_status(job_id: str, request: Request):
 
     job = jobs.get(job_id)
     if job is None:
+        try:
+            import stream_monitor
+            job = stream_monitor.get_active_stream_job(job_id)
+        except Exception:
+            pass
+    if job is None:
         job = _job_view_from_disk(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -6398,6 +6401,22 @@ async def restore_project(job_id: str, request: Request):
                 "title": title,
                 "logs": _visible_logs_timed(j.get("logs", []))[0] if j.get("logs") else [],
             }
+
+        # Check if this is an active live stream project in memory
+        try:
+            import stream_monitor
+            sj = stream_monitor.get_active_stream_job(job_id)
+            if sj:
+                return {
+                    "job_id": job_id,
+                    "status": sj.get("status", "processing"),
+                    "result": _with_download_urls(sj.get("result")),
+                    "project_state": None,
+                    "title": sj.get("title") or f"Live Stream {job_id[:8]}",
+                    "logs": sj.get("logs", []),
+                }
+        except Exception:
+            pass
 
         rec = _job_view_from_disk(job_id)
         if rec:

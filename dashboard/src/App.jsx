@@ -2909,7 +2909,7 @@ function App() {
             <div className="h-full overflow-y-auto custom-scrollbar animate-fade">
               <div className="max-w-6xl mx-auto p-4 sm:p-6 md:p-8">
                 <React.Suspense fallback={<div className="p-12 flex justify-center text-muted"><Loader2 className="animate-spin text-brass" size={20} /></div>}>
-                  <LiveStreamTab />
+                  <LiveStreamTab onReopenProject={(jobId, status) => { setActiveTab('dashboard'); restoreProject(jobId, status); }} />
                 </React.Suspense>
               </div>
             </div>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Radio, Youtube, Plus, Trash2, Check, Loader2, AlertCircle, RefreshCw, Sparkles, ExternalLink, Play } from 'lucide-react';
+import { Radio, Youtube, Plus, Trash2, Check, Loader2, AlertCircle, RefreshCw, Sparkles, ExternalLink, Play, Film, FolderOpen, ChevronDown, ChevronUp, X, Download, HardDrive } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { getApiUrl } from '../config';
 
-export default function LiveStreamTab() {
+export default function LiveStreamTab({ onReopenProject }) {
   const [monitors, setMonitors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -13,6 +14,15 @@ export default function LiveStreamTab() {
   const [autoClip, setAutoClip] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Creator streams view & modal
+  const [selectedCreator, setSelectedCreator] = useState(null);
+  const [creatorStreams, setCreatorStreams] = useState([]);
+  const [loadingStreams, setLoadingStreams] = useState(false);
+  const [expandedStreamId, setExpandedStreamId] = useState(null);
+
+  // Single active video player modal
+  const [activePlayerClip, setActivePlayerClip] = useState(null);
 
   const fetchMonitors = async () => {
     try {
@@ -33,6 +43,23 @@ export default function LiveStreamTab() {
     const interval = setInterval(fetchMonitors, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const openCreatorStreams = async (mon) => {
+    setSelectedCreator(mon);
+    setLoadingStreams(true);
+    setExpandedStreamId(null);
+    try {
+      const res = await apiFetch(`/api/live/monitors/${mon.id}/streams`);
+      if (res.ok) {
+        const data = await res.json();
+        setCreatorStreams(data.streams || []);
+      }
+    } catch (e) {
+      console.error('Failed to load creator streams', e);
+    } finally {
+      setLoadingStreams(false);
+    }
+  };
 
   const handleAddMonitor = async (e) => {
     e.preventDefault();
@@ -90,6 +117,14 @@ export default function LiveStreamTab() {
     }
   };
 
+  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }) : '');
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade">
       {/* Header Banner */}
@@ -101,7 +136,7 @@ export default function LiveStreamTab() {
           <div>
             <h2 className="text-xl font-bold tracking-tight text-ink">Live Stream Auto-Clipper</h2>
             <p className="text-sm text-muted mt-0.5">
-              Continuously tracks YouTube and Twitch creators. Automatically captures rolling streams when live, detects peak hype moments, and generates gaming shorts into your Library.
+              Continuously captures rolling 10-minute segments from YouTube and Twitch live streams. Highlights are spotted and clipped into your Library automatically while recording continues without interruption.
             </p>
           </div>
         </div>
@@ -235,7 +270,7 @@ export default function LiveStreamTab() {
                       {isLive ? (
                         <span className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider rounded-full bg-red-500/15 text-red-500 animate-pulse">
                           <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                          {mon.status === 'recording' ? 'Recording Stream' : mon.status === 'clipping' ? 'Clipping Peak' : 'LIVE NOW'}
+                          {mon.status === 'recording' ? 'Recording Stream (10m)' : mon.status === 'clipping' ? 'Clipping Highlight' : 'LIVE NOW'}
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider rounded-full bg-muted/15 text-muted">
@@ -268,7 +303,17 @@ export default function LiveStreamTab() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* View Creator Streams Button */}
+                    <button
+                      onClick={() => openCreatorStreams(mon)}
+                      className="text-xs px-3 py-1.5 rounded font-medium border border-rule hover:border-rule2 hover:text-ink text-muted flex items-center gap-1.5 transition-colors bg-surface"
+                      title="View streams and generated clips from this creator"
+                    >
+                      <Film size={13} className="text-brass" />
+                      <span>Streams</span>
+                    </button>
+
                     <button
                       onClick={() => handleToggle(mon.id)}
                       className={`text-xs px-3 py-1.5 rounded font-medium border transition-colors ${
@@ -293,7 +338,228 @@ export default function LiveStreamTab() {
           </div>
         )}
       </div>
+
+      {/* MODAL: Creator Streams & Clips Explorer */}
+      {selectedCreator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/75 backdrop-blur-xs animate-fade">
+          <div
+            className="card max-w-3xl w-full max-h-[88vh] flex flex-col overflow-hidden border-rule shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-rule flex items-center justify-between bg-paper2 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-md bg-brass/10 text-brass">
+                  <Film size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-ink">
+                    Streams &amp; Clips: {selectedCreator.channel_name || selectedCreator.channel_url}
+                  </h3>
+                  <p className="text-xs text-muted">
+                    {selectedCreator.platform === 'twitch' ? 'Twitch' : 'YouTube'} Channel Streams
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedCreator(null)}
+                className="p-1.5 text-muted hover:text-ink rounded hover:bg-paper3 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body: Streams List */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar space-y-4">
+              {loadingStreams ? (
+                <div className="py-16 flex flex-col items-center justify-center gap-2 text-muted">
+                  <Loader2 size={24} className="animate-spin text-brass" />
+                  <span className="text-xs font-mono">Fetching creator streams…</span>
+                </div>
+              ) : creatorStreams.length === 0 ? (
+                <div className="text-center py-12 text-muted space-y-2">
+                  <Film size={32} className="mx-auto opacity-40" />
+                  <p className="text-sm">No recorded stream sessions found for this creator yet.</p>
+                  <p className="text-xs text-muted/70">
+                    When this creator goes live, 10-minute segments will be recorded and clips will show here.
+                  </p>
+                </div>
+              ) : (
+                creatorStreams.map((st) => {
+                  const isExp = expandedStreamId === st.job_id;
+                  const isLive = st.status === 'processing';
+                  return (
+                    <div
+                      key={st.job_id}
+                      className={`border rounded-lg overflow-hidden transition-all ${
+                        isExp ? 'border-brass/50 bg-paper2/50' : 'border-rule bg-paper hover:border-rule2'
+                      }`}
+                    >
+                      {/* Stream Item Header */}
+                      <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <h4 className="font-semibold text-sm text-ink truncate" title={st.title}>
+                              {st.title}
+                            </h4>
+                            {isLive ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-red-500/20 text-red-400 font-semibold shrink-0 flex items-center gap-1 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                                Live Now
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-muted/20 text-muted font-medium shrink-0">
+                                Completed
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono px-2 py-0.5 bg-paper3 border border-rule rounded text-muted">
+                              {st.clip_count} {st.clip_count === 1 ? 'clip' : 'clips'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted font-mono">
+                            {fmtDate(st.created_at)}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {onReopenProject && (
+                            <button
+                              onClick={() => {
+                                setSelectedCreator(null);
+                                onReopenProject(st.job_id, st.status);
+                              }}
+                              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                              title="Open stream in Generator workspace"
+                            >
+                              <FolderOpen size={13} /> Open Project
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setExpandedStreamId(isExp ? null : st.job_id)}
+                            className="btn-ghost py-1.5 px-3 text-xs border border-rule flex items-center gap-1"
+                          >
+                            <span>Clips</span>
+                            {isExp ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Stream Clips Drawer */}
+                      {isExp && (
+                        <div className="border-t border-rule bg-paper3/30 p-4 animate-fade">
+                          {st.clips?.length === 0 ? (
+                            <p className="text-xs text-muted text-center py-3">
+                              No clips extracted from this stream session yet.
+                            </p>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between text-xs text-muted font-mono">
+                                <span className="flex items-center gap-1.5 text-brass">
+                                  <HardDrive size={12} /> S3 Direct Playback
+                                </span>
+                                <span>{st.clips.length} shorts</span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {st.clips.map((clip) => (
+                                  <div
+                                    key={clip.index}
+                                    className="p-3 bg-paper border border-rule rounded-input flex flex-col justify-between hover:border-brass/40 transition-colors"
+                                  >
+                                    <div>
+                                      <p className="text-xs font-semibold text-ink line-clamp-2 mb-1" title={clip.title}>
+                                        {clip.title}
+                                      </p>
+                                      <p className="text-[10px] text-muted font-mono mb-2">
+                                        Duration: {Math.round(clip.duration)}s
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-rule/50">
+                                      <button
+                                        onClick={() => setActivePlayerClip(clip)}
+                                        className="btn-ghost py-1 px-2.5 text-[11px] text-brass hover:text-ink flex items-center gap-1 font-mono"
+                                      >
+                                        <Play size={11} /> Play Short
+                                      </button>
+                                      <a
+                                        href={clip.stream_url ? clip.stream_url : getApiUrl(clip.video_url)}
+                                        download
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="p-1 text-muted hover:text-ink rounded"
+                                        title="Download Short"
+                                      >
+                                        <Download size={13} />
+                                      </a>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SINGLE INSTANCE VIDEO PLAYER MODAL */}
+      {activePlayerClip && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-ink/80 backdrop-blur-xs animate-fade"
+          onClick={() => setActivePlayerClip(null)}
+        >
+          <div
+            className="card max-w-sm w-full p-4 flex flex-col gap-3 border-rule shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-muted flex items-center gap-1.5">
+                <HardDrive size={12} className="text-brass" /> Direct Stream
+              </span>
+              <button
+                onClick={() => setActivePlayerClip(null)}
+                className="p-1 text-muted hover:text-ink rounded"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="relative aspect-[9/16] bg-black rounded-lg overflow-hidden flex items-center justify-center">
+              <video
+                src={activePlayerClip.stream_url ? activePlayerClip.stream_url : getApiUrl(activePlayerClip.video_url)}
+                controls
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-ink line-clamp-2">
+                {activePlayerClip.title}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1 border-t border-rule">
+              <a
+                href={activePlayerClip.stream_url ? activePlayerClip.stream_url : getApiUrl(activePlayerClip.video_url)}
+                download
+                target="_blank"
+                rel="noreferrer"
+                className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+              >
+                <Download size={13} /> Download Video
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

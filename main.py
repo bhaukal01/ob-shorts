@@ -3076,6 +3076,13 @@ async def toggle_live_monitor_endpoint(monitor_id: int):
     return {"status": "success", "auto_clip": new_auto_clip}
 
 
+@router.get("/api/live/monitors/{monitor_id}/streams")
+async def get_monitor_streams_endpoint(monitor_id: int):
+    import stream_monitor
+    streams = stream_monitor.get_creator_streams(monitor_id)
+    return {"streams": streams}
+
+
 _active_jobs_provider = None
 _job_canceller = None
 
@@ -3223,11 +3230,13 @@ async def get_local_projects():
                     created_iso = datetime.datetime.fromtimestamp(
                         os.path.getmtime(job_path), datetime.timezone.utc
                     ).isoformat()
+                    is_stream = bool(idata.get("is_stream") or entry.startswith("stream_"))
                     projects.append({
                         "job_id": entry,
                         "title": title,
                         "status": "processing",
                         "is_active": True,
+                        "is_stream": is_stream,
                         "created_at": created_iso,
                         "clip_count": 0,
                     })
@@ -3241,11 +3250,14 @@ async def get_local_projects():
                     os.path.getmtime(job_path), datetime.timezone.utc
                 ).isoformat()
                 title = meta.get("video_title") or meta.get("title") or entry
+                is_stream = bool(meta.get("is_stream") or entry.startswith("stream_"))
+                status = meta.get("status", "completed")
                 projects.append({
                     "job_id": entry,
                     "title": title,
-                    "status": "completed",
-                    "is_active": False,
+                    "status": status,
+                    "is_active": (status == "processing"),
+                    "is_stream": is_stream,
                     "created_at": created_iso,
                     "clip_count": len(meta.get("shorts", [])),
                 })

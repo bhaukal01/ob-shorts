@@ -121,10 +121,18 @@ def init_db() -> None:
                 subtitle_script TEXT DEFAULT 'auto',
                 last_checked TIMESTAMP,
                 last_live TIMESTAMP,
+                current_job_id TEXT,
                 created_at TIMESTAMP
             )
         """)
         conn.commit()
+
+        # Migrate existing schema if current_job_id is missing
+        try:
+            cursor.execute("ALTER TABLE live_monitors ADD COLUMN current_job_id TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
         # Seed settings from .env / os.environ on first run
         _seed_settings(cursor, conn)
@@ -441,6 +449,7 @@ def update_live_monitor(
     last_checked: Optional[str] = None,
     last_live: Optional[str] = None,
     auto_clip: Optional[int] = None,
+    current_job_id: Optional[str] = None,
 ) -> None:
     """Update live monitor status and timestamps."""
     updates = []
@@ -460,6 +469,9 @@ def update_live_monitor(
     if auto_clip is not None:
         updates.append("auto_clip = ?")
         params.append(auto_clip)
+    if current_job_id is not None:
+        updates.append("current_job_id = ?")
+        params.append(current_job_id)
 
     if not updates:
         return

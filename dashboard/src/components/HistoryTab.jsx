@@ -177,10 +177,18 @@ export default function HistoryTab({ onReopenProject }) {
                     <p className="text-sm font-medium text-ink truncate flex-1" title={proj.title}>
                       {proj.title}
                     </p>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-amber-500/20 text-amber-300 font-semibold shrink-0 flex items-center gap-1">
-                      <Loader2 size={10} className="animate-spin" />
-                      {proj.status === 'processing' ? 'Processing' : 'Queued'}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {proj.is_stream && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-red-500/20 text-red-400 font-semibold shrink-0 flex items-center gap-1 animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                          Live Stream
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-amber-500/20 text-amber-300 font-semibold shrink-0 flex items-center gap-1">
+                        <Loader2 size={10} className="animate-spin" />
+                        {proj.status === 'processing' ? 'Processing' : 'Queued'}
+                      </span>
+                    </div>
                   </div>
 
                   {proj.latest_log && (
@@ -259,6 +267,11 @@ export default function HistoryTab({ onReopenProject }) {
                         <h3 className="text-sm font-semibold text-ink truncate max-w-xl" title={proj.title}>
                           {proj.title}
                         </h3>
+                        {proj.is_stream && (
+                          <span className="text-[10px] py-0.5 px-2 bg-purple-500/15 text-purple-400 border border-purple-500/30 rounded font-medium flex items-center gap-1 shrink-0">
+                            📹 Stream
+                          </span>
+                        )}
                         <span className="badge-ok text-[10px] py-0.5 px-2 shrink-0">
                           {proj.clip_count || clips.length} {proj.clip_count === 1 ? 'Clip' : 'Clips'}
                         </span>

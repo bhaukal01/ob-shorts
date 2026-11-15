@@ -56,17 +56,20 @@ class TestStreamMonitor(unittest.TestCase):
         args = mock_run.call_args[0][0]
         self.assertNotIn("-map", args)
 
-    @patch("database.list_live_monitors")
-    def test_provide_active_jobs_includes_recording_monitor(self, mock_list):
-        mock_list.return_value = [{
-            "id": 1,
-            "channel_name": "GamerFleet",
-            "channel_url": "https://youtube.com/@GamerFleet/live",
-            "status": "recording",
-            "last_live": "2026-11-15T14:20:00Z",
+    @patch("stream_monitor.get_active_stream_jobs")
+    def test_provide_active_jobs_includes_recording_monitor(self, mock_stream_jobs):
+        mock_stream_jobs.return_value = [{
+            "job_id": "stream_GAMER123",
+            "title": "🔴 [LIVE] GamerFleet",
+            "status": "processing",
+            "is_stream": True,
+            "submitted_at": 1700000000,
+            "logs": ["Recording live stream (10m segment)..."],
+            "result": {"clips": []},
         }]
         active_jobs = app._provide_active_jobs()
-        matching = [j for j in active_jobs if j.get("job_id") == "live_mon_1"]
+        matching = [j for j in active_jobs if j.get("job_id") == "stream_GAMER123"]
         self.assertEqual(len(matching), 1)
         self.assertIn("GamerFleet", matching[0]["title"])
         self.assertEqual(matching[0]["status"], "processing")
+        self.assertTrue(matching[0]["is_stream"])
