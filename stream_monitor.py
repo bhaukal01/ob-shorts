@@ -344,6 +344,16 @@ def process_live_segment(
             _log(f"Segment from '{live_title}' skipped: No viral moment found.")
             return None
 
+        # Immediately transliterate transcript to Hinglish if selected,
+        # so that all subsequent ASS rendering, metadata persistence, and editing operate in Hinglish natively
+        if subtitle_script == "hinglish":
+            try:
+                import hindi_transliterator
+                transcript = hindi_transliterator.transliterate_transcript(transcript)
+                _log("🔤 Transliterated live stream transcript to Hinglish")
+            except Exception as e:
+                _log(f"Hinglish transliteration notice: {e}")
+
         clip_start = moment["start"]
         clip_end = moment["end"]
         clip_title = moment["title"]
@@ -367,8 +377,12 @@ def process_live_segment(
                 "title": live_title,
                 "video_title": live_title,
                 "is_stream": True,
+                "subtitle_script": subtitle_script,
                 "shorts": [],
             }
+
+        meta["subtitle_script"] = subtitle_script
+        meta["transcript"] = transcript
 
         existing_shorts = meta.get("shorts", [])
         clip_num = len(existing_shorts) + 1
@@ -405,16 +419,8 @@ def process_live_segment(
         ass_path = os.path.join(out_dir, f"subs_{job_id}_{clip_num}.ass")
         sub_clip_path = os.path.join(out_dir, f"subtitled_{job_id}_{clip_filename}")
 
-        transcript_to_use = transcript
-        if subtitle_script == "hinglish":
-            try:
-                import hindi_transliterator
-                transcript_to_use = hindi_transliterator.transliterate_transcript(transcript)
-            except Exception:
-                pass
-
         _subs.generate_ass(
-            transcript_to_use, clip_start, clip_end, ass_path,
+            transcript, clip_start, clip_end, ass_path,
             fontsize=16, font_name="Anton" if subtitle_script != "hindi" else "Noto Sans Devanagari",
         )
         if os.path.exists(ass_path):
@@ -445,6 +451,7 @@ def process_live_segment(
             "video_url": f"/videos/{job_id}/{os.path.basename(final_clip)}",
             "stream_url": s3_url,
             "duration": dur,
+            "subtitle_script": subtitle_script,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         existing_shorts.append(new_short)

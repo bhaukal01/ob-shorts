@@ -6850,7 +6850,7 @@ async def get_clip_transcript(job_id: str, clip_index: int, request: Request):
     if not json_files:
         raise HTTPException(status_code=404, detail="Metadata not found")
 
-    with open(json_files[0], 'r') as f:
+    with open(json_files[0], 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     transcript = data.get('transcript')
@@ -6862,6 +6862,22 @@ async def get_clip_transcript(job_id: str, clip_index: int, request: Request):
         raise HTTPException(status_code=404, detail="Clip not found")
 
     clip_data = clips[clip_index]
+
+    # Resolve script (e.g. hinglish) from query param, clip, project metadata, or environment
+    script_param = request.query_params.get("script", "").strip().lower()
+    effective_script = (
+        script_param
+        or clip_data.get("subtitle_script")
+        or data.get("subtitle_script")
+        or os.environ.get("SUBTITLE_SCRIPT", "")
+    ).lower()
+
+    if effective_script == "hinglish":
+        try:
+            import hindi_transliterator
+            transcript = hindi_transliterator.transliterate_transcript(transcript)
+        except Exception as e:
+            logger.warning(f"Failed to transliterate clip transcript to hinglish: {e}")
 
     # Recut clips are concatenations of source segments; remap the transcript
     # onto the clip timeline so every consumer keeps its flat start..end logic.
@@ -6878,8 +6894,15 @@ async def get_clip_transcript(job_id: str, clip_index: int, request: Request):
     for segment in transcript.get('segments', []):
         for word_info in segment.get('words', []):
             if word_info['end'] > clip_start and word_info['start'] < clip_end:
+                w_text = word_info.get('word', '').strip()
+                if effective_script == "hinglish" and any('\u0900' <= ch <= '\u097f' for ch in w_text):
+                    try:
+                        import hindi_transliterator
+                        w_text = hindi_transliterator.transliterate_text(w_text)
+                    except Exception:
+                        pass
                 captions.append({
-                    "text": word_info.get('word', '').strip(),
+                    "text": w_text,
                     "startMs": int((max(0, word_info['start'] - clip_start)) * 1000),
                     "endMs": int((max(0, word_info['end'] - clip_start)) * 1000),
                 })
@@ -6890,6 +6913,7 @@ async def get_clip_transcript(job_id: str, clip_index: int, request: Request):
         "captions": captions,
         "durationSec": duration_sec,
         "language": transcript.get('language', 'en'),
+        "subtitle_script": effective_script,
     }
 
 
@@ -7833,7 +7857,15 @@ async def add_subtitles(req: SubtitleRequest, request: Request):
         sub_start = clip_data.get('start', 0)
         sub_end = clip_data.get('end', 0)
 
-    if getattr(req, "subtitle_script", None) == "hinglish":
+    effective_script = (
+        getattr(req, "subtitle_script", None)
+        or clip_data.get('subtitle_script')
+        or data.get('subtitle_script')
+        or os.environ.get("SUBTITLE_SCRIPT", "")
+    )
+    effective_script = (effective_script or "").lower()
+
+    if effective_script == "hinglish":
         try:
             import hindi_transliterator
             sub_transcript = hindi_transliterator.transliterate_transcript(sub_transcript)
@@ -7850,8 +7882,18 @@ async def add_subtitles(req: SubtitleRequest, request: Request):
         # Leading space = Whisper's word-boundary convention; without it the
         # block collector treats each word as a continuation fragment and
         # glues the whole line together.
+        def _fmt_w(text):
+            txt = text.strip()
+            if effective_script == "hinglish" and any('\u0900' <= ch <= '\u097f' for ch in txt):
+                try:
+                    import hindi_transliterator
+                    return hindi_transliterator.transliterate_text(txt)
+                except Exception:
+                    pass
+            return txt
+
         edited = [
-            {"word": " " + w.text.strip(), "start": max(0.0, w.startMs / 1000.0),
+            {"word": " " + _fmt_w(w.text), "start": max(0.0, w.startMs / 1000.0),
              "end": max(0.0, w.endMs / 1000.0)}
             for w in req.words if w.text.strip() and w.endMs > w.startMs >= 0
         ]

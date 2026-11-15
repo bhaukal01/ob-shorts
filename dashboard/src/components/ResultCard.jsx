@@ -516,6 +516,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                     max_chars: options.maxChars ?? null,
                     max_duration: options.maxDuration ?? null,
                     input_filename: serverVideoFile,
+                    subtitle_script: options.subtitle_script || clip?.subtitle_script || 'auto',
                     // Edited caption text (clip-relative ms); null = server
                     // regenerates from the transcript as before.
                     words: options.captions || null
@@ -1374,6 +1375,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                 jobId={jobId}
                 clipIndex={index}
                 existingHook={activeLayers.hook}
+                subtitleScript={clip?.subtitle_script || 'auto'}
             />
 
             <HookModal

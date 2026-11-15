@@ -115,7 +115,7 @@ const swatchClass = (selected) =>
         ? 'ring-2 ring-[color:var(--color-accent)] ring-offset-2 ring-offset-[color:var(--color-paper-2)]'
         : 'ring-1 ring-[color:var(--color-rule-2)] hover:ring-[color:var(--color-accent)]'}`;
 
-export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll, onRemove, isProcessing, videoUrl, jobId, clipIndex, existingHook, bulkCount = 0, bulkProgress }) {
+export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll, onRemove, isProcessing, videoUrl, jobId, clipIndex, existingHook, bulkCount = 0, bulkProgress, subtitleScript = 'auto' }) {
     // Opens on the look the clip already has (the Default preset), so
     // "apply" without touching anything changes nothing.
     const [position, setPosition] = useState('bottom');
@@ -180,7 +180,8 @@ export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll,
         if (!isOpen || !jobId || clipIndex === undefined) return;
 
         setCaptionsLoading(true);
-        apiFetch(`/api/clip/${jobId}/${clipIndex}/transcript`)
+        const scriptParam = subtitleScript && subtitleScript !== 'auto' ? `?script=${encodeURIComponent(subtitleScript)}` : '';
+        apiFetch(`/api/clip/${jobId}/${clipIndex}/transcript${scriptParam}`)
             .then((res) => res.ok ? res.json() : null)
             .then((data) => {
                 if (data && data.captions && data.captions.length > 0) {
@@ -195,7 +196,7 @@ export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll,
             })
             .catch(() => setUseRemotionPreview(false))
             .finally(() => setCaptionsLoading(false));
-    }, [isOpen, jobId, clipIndex]);
+    }, [isOpen, jobId, clipIndex, subtitleScript]);
 
     // When user edits text, redistribute words across original timestamps
     const handleTextEdit = (newText) => {
@@ -560,6 +561,7 @@ export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll,
                                 // Karaoke burn (server-side ASS render)
                                 style, effect, baseOpacity, uppercase, highlightColor,
                                 reveal: !oneWord && reveal, shadow, maxChars, maxDuration,
+                                subtitle_script: subtitleScript,
                                 // Remotion data
                                 remotion: useRemotionPreview ? subtitleConfig : null,
                                 captions: textEdited ? captions : null,

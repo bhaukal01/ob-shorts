@@ -3714,6 +3714,26 @@ if __name__ == '__main__':
         else:
             print(f"🔥 Found {len(clips_data['shorts'])} clips!")
 
+            sub_script = os.environ.get("SUBTITLE_SCRIPT", "auto").strip().lower()
+            meta_script = os.environ.get("METADATA_SCRIPT", "auto").strip().lower()
+
+            # Transliterate transcript to Hinglish immediately after viral moments are found,
+            # so that all downstream processing, metadata storage, subtitle burns,
+            # and modal subtitle editors operate on Hinglish natively.
+            if sub_script == "hinglish" or meta_script == "hinglish":
+                try:
+                    import hindi_transliterator
+                    if transcript is not None:
+                        transcript = hindi_transliterator.transliterate_transcript(transcript)
+                        print("🔤 Transliterated transcript to Romanized Hinglish for all clips and editors.", flush=True)
+                except Exception as e:
+                    print(f"   ⚠️ Hinglish transcript transliteration failed ({e})", flush=True)
+
+            clips_data['subtitle_script'] = sub_script
+            clips_data['metadata_script'] = meta_script
+            for s in clips_data.get('shorts', []):
+                s['subtitle_script'] = sub_script
+
             # Save metadata. Silent videos have no transcript → no subtitles,
             # which is correct (there's no speech to caption).
             clips_data['transcript'] = transcript or {"language": "none", "segments": []}
