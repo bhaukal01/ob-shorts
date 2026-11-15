@@ -77,35 +77,63 @@ def check_stream_live(channel_url: str, platform: str) -> Optional[Dict[str, Any
         return None
 
 
-def get_live_stream_manifest_url(channel_url: str) -> Optional[str]:
-    """Extract direct HLS .m3u8 stream manifest URL using yt-dlp."""
+def get_live_stream_manifest_urls(channel_url: str) -> List[str]:
+    """Extract direct HLS .m3u8 stream manifest URL(s) using yt-dlp.
+    YouTube provides separate video and audio HLS manifests.
+    Twitch provides a combined stream manifest.
+    """
     try:
         cmd = [
             sys.executable, "-m", "yt_dlp",
+            "--no-warnings",
             "-g",
-            "-f", "best[ext=mp4]/best",
             channel_url,
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
         if res.returncode == 0 and res.stdout.strip():
-            return res.stdout.strip().splitlines()[0]
+            urls = [line.strip() for line in res.stdout.splitlines() if line.strip().startswith("http")]
+            return urls
     except Exception as e:
-        _log(f"Failed to get stream URL: {e}")
-    return None
+        _log(f"Failed to get stream URLs: {e}")
+    return []
 
 
-def record_stream_segment(manifest_url: str, duration_sec: int, out_path: str) -> bool:
+def get_live_stream_manifest_url(channel_url: str) -> Optional[str]:
+    """Backward-compatible helper returning the primary manifest URL."""
+    urls = get_live_stream_manifest_urls(channel_url)
+    return urls[0] if urls else None
+
+
+def record_stream_segment(manifest_urls: Any, duration_sec: int, out_path: str) -> bool:
     """Capture a segment of duration_sec directly from live stream with zero re-encoding."""
+    if isinstance(manifest_urls, str):
+        manifest_urls = [manifest_urls] if manifest_urls else []
+    if not manifest_urls:
+        return False
     try:
-        cmd = [
-            "ffmpeg", "-y",
-            "-re",
-            "-i", manifest_url,
-            "-t", str(duration_sec),
-            "-c", "copy",
-            "-avoid_negative_ts", "make_zero",
-            out_path,
-        ]
+        if len(manifest_urls) >= 2:
+            # YouTube streams: mux separate video (0) and audio (1) streams
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", manifest_urls[0],
+                "-i", manifest_urls[1],
+                "-t", str(duration_sec),
+                "-c", "copy",
+                "-map", "0:v:0",
+                "-map", "1:a:0?",
+                "-avoid_negative_ts", "make_zero",
+                out_path,
+            ]
+        else:
+            # Single combined manifest (Twitch)
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", manifest_urls[0],
+                "-t", str(duration_sec),
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
+                out_path,
+            ]
         p = subprocess.run(cmd, capture_output=True, timeout=duration_sec + 60)
         return p.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 100000
     except Exception as e:
@@ -220,6 +248,8 @@ Respond in strict JSON format:
 
         # Apply Reframe & Layout
         from reframe_v2 import render as reframe_render
+        if layout == "gaming":
+            os.environ["GAMING_LAYOUT"] = "1"
         rendered_clip = reframe_render(
             raw_clip_path,
             1080, 1920,
@@ -228,7 +258,7 @@ Respond in strict JSON format:
 
         final_clip = rendered_clip or raw_clip_path
 
-        # Generate Subtitles
+        # Generate Subtitles (compact ~40% size anchored in safe zone)
         import subtitles as _subs
         ass_path = os.path.join(out_dir, f"subs_{job_id}.ass")
         sub_clip_path = os.path.join(out_dir, f"subtitled_{job_id}_{clip_filename}")
@@ -243,7 +273,7 @@ Respond in strict JSON format:
 
         _subs.generate_ass(
             transcript_to_use, clip_start, clip_end, ass_path,
-            fontsize=44, font_name="Anton" if subtitle_script != "hindi" else "Noto Sans Devanagari",
+            fontsize=16, font_name="Anton" if subtitle_script != "hindi" else "Noto Sans Devanagari",
         )
         if os.path.exists(ass_path):
             try:
@@ -252,6 +282,14 @@ Respond in strict JSON format:
                     final_clip = sub_clip_path
             except Exception as e:
                 _log(f"Burning subtitles failed: {e}")
+
+        # S3 background upload if configured
+        try:
+            import s3_uploader
+            if s3_uploader.is_s3_configured():
+                s3_uploader.upload_final_video(final_clip, job_id, os.path.basename(final_clip))
+        except Exception as e:
+            _log(f"S3 auto-upload notice: {e}")
 
         # Write metadata.json so the clip appears in Dashboard Library
         meta = {
@@ -318,8 +356,9 @@ def run_monitor_cycle() -> None:
         if not auto_clip:
             continue
 
-        manifest_url = get_live_stream_manifest_url(url)
-        if not manifest_url:
+        manifest_urls = get_live_stream_manifest_urls(url)
+        if not manifest_urls:
+            _log(f"⚠️ Could not extract manifest URLs for live stream {url}")
             continue
 
         # Create temporary segment file
@@ -329,20 +368,25 @@ def run_monitor_cycle() -> None:
 
         _log(f"📥 Recording 5-minute rolling slice for {live_info['title']}...")
         database.update_live_monitor(mid, status="recording")
-        recorded = record_stream_segment(manifest_url, 300, seg_file)
-
-        if recorded and os.path.exists(seg_file):
-            database.update_live_monitor(mid, status="clipping")
-            process_live_segment(
-                seg_file,
-                live_info["title"],
-                layout=layout,
-                subtitle_script=sub_script,
-            )
-            try:
-                os.remove(seg_file)
-            except OSError:
-                pass
+        recorded = False
+        try:
+            recorded = record_stream_segment(manifest_urls, 300, seg_file)
+            if recorded and os.path.exists(seg_file):
+                database.update_live_monitor(mid, status="clipping")
+                process_live_segment(
+                    seg_file,
+                    live_info["title"],
+                    layout=layout,
+                    subtitle_script=sub_script,
+                )
+        except Exception as seg_err:
+            _log(f"Error handling live segment: {seg_err}")
+        finally:
+            if os.path.exists(seg_file):
+                try:
+                    os.remove(seg_file)
+                except OSError:
+                    pass
             database.update_live_monitor(mid, status="live")
 
 

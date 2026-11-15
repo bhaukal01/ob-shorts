@@ -4156,6 +4156,28 @@ def _provide_active_jobs():
                 "clip_count": ready_count,
                 "latest_log": latest_log,
             })
+
+    # Surface actively recording/clipping live streams as ongoing projects
+    try:
+        import database
+        for mon in database.list_live_monitors():
+            mon_status = mon.get("status")
+            if mon_status in ("recording", "clipping"):
+                mid = mon.get("id")
+                name = mon.get("channel_name") or mon.get("channel_url")
+                status_desc = "Recording live stream (5m rolling slice)..." if mon_status == "recording" else "Clipping & rendering peak moment..."
+                result.append({
+                    "job_id": f"live_mon_{mid}",
+                    "title": f"🔴 [LIVE] {name}",
+                    "status": "processing",
+                    "is_active": True,
+                    "created_at": mon.get("last_live") or mon.get("last_checked") or datetime.now(timezone.utc).isoformat(),
+                    "clip_count": 0,
+                    "latest_log": status_desc,
+                })
+    except Exception:
+        pass
+
     return result
 
 def _cancel_active_job(job_id):
