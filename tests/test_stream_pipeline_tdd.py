@@ -267,3 +267,96 @@ class TestStreamPipelineTDD(unittest.TestCase):
         self.assertEqual(len(matched), 1)
         self.assertTrue(matched[0]["is_stream"])
         self.assertEqual(matched[0]["title"], "Mortal Pubg Live #99")
+
+    @patch("llm_backend.active", return_value=True)
+    @patch("llm_backend.generate_json")
+    def test_analyze_segment_passes_pydantic_model_to_llm(self, mock_llm, mock_active):
+        """analyze_segment_for_viral_moment passes a Pydantic BaseModel to llm_backend.generate_json."""
+        from pydantic import BaseModel
+        mock_llm.return_value = ({
+            "viral": True,
+            "start": 10.0,
+            "end": 45.0,
+            "title": "Insane Headshot",
+            "hook": "Watch this"
+        }, {})
+        transcript = {
+            "segments": [
+                {"start": 10.0, "end": 45.0, "text": "Unbelievable headshot right through the smoke!"}
+            ]
+        }
+        res = stream_monitor.analyze_segment_for_viral_moment(transcript, "Test Stream")
+        self.assertIsNotNone(res)
+        self.assertTrue(mock_llm.called)
+        schema_arg = mock_llm.call_args[0][1]
+        self.assertTrue(isinstance(schema_arg, type) and issubclass(schema_arg, BaseModel))
+        # Ensure model_json_schema is callable on schema_arg without AttributeError
+        self.assertIn("properties", schema_arg.model_json_schema())
+
+    @patch("llm_backend.active", return_value=True)
+    @patch("llm_backend.generate_json", side_effect=RuntimeError("LLM API connection error"))
+    def test_analyze_segment_fallback_to_densest_speech_on_llm_failure(self, mock_llm, mock_active):
+        """If LLM fails or is unavailable, active speech is rescued using word-density heuristic."""
+        # 10m transcript with active speech
+        transcript = {
+            "segments": [
+                {
+                    "start": 100.0,
+                    "end": 140.0,
+                    "text": "Guys look at this enemy team pushing our compound get ready to shoot fire now!",
+                    "words": [
+                        {"word": "Guys", "start": 100.0, "end": 102.0},
+                        {"word": "look", "start": 102.0, "end": 105.0},
+                        {"word": "at", "start": 105.0, "end": 107.0},
+                        {"word": "this", "start": 107.0, "end": 110.0},
+                        {"word": "enemy", "start": 110.0, "end": 113.0},
+                        {"word": "team", "start": 113.0, "end": 116.0},
+                        {"word": "pushing", "start": 116.0, "end": 120.0},
+                        {"word": "our", "start": 120.0, "end": 122.0},
+                        {"word": "compound", "start": 122.0, "end": 125.0},
+                        {"word": "get", "start": 125.0, "end": 127.0},
+                        {"word": "ready", "start": 127.0, "end": 130.0},
+                        {"word": "to", "start": 130.0, "end": 132.0},
+                        {"word": "shoot", "start": 132.0, "end": 135.0},
+                        {"word": "fire", "start": 135.0, "end": 138.0},
+                        {"word": "now!", "start": 138.0, "end": 140.0},
+                    ]
+                }
+            ]
+        }
+        res = stream_monitor.analyze_segment_for_viral_moment(transcript, "Cyberweek PUBG")
+        self.assertIsNotNone(res)
+        self.assertGreaterEqual(res["start"], 90.0)
+        self.assertLessEqual(res["start"], 120.0)
+        self.assertIn("Highlight", res["title"])
+
+    @patch("llm_backend.active", return_value=True)
+    @patch("llm_backend.generate_json")
+    def test_analyze_segment_rescues_viral_false_when_speech_abundant(self, mock_llm, mock_active):
+        """If LLM says viral=False due to overly strict evaluation, but speech is abundant, rescue highlight."""
+        mock_llm.return_value = ({"viral": False, "reason": "Casual gameplay talk"}, {})
+        transcript = {
+            "segments": [
+                {
+                    "start": 50.0,
+                    "end": 90.0,
+                    "text": "We need to loot the airdrop fast before the blue zone closes in on us here",
+                    "words": [
+                        {"word": w, "start": 50.0 + i * 2, "end": 50.0 + (i + 1) * 2}
+                        for i, w in enumerate("We need to loot the airdrop fast before the blue zone closes in on us here take the sniper rifle".split())
+                    ]
+                },
+                {
+                    "start": 95.0,
+                    "end": 130.0,
+                    "text": "Enemy spotted on the ridge heading northeast watch out for grenades",
+                    "words": [
+                        {"word": w, "start": 95.0 + i * 2, "end": 95.0 + (i + 1) * 2}
+                        for i, w in enumerate("Enemy spotted on the ridge heading northeast watch out for grenades behind cover".split())
+                    ]
+                }
+            ]
+        }
+        res = stream_monitor.analyze_segment_for_viral_moment(transcript, "PUBG Mobile Stream")
+        self.assertIsNotNone(res)
+        self.assertIn("Highlight", res["title"])
