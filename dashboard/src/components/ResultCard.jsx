@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Share2, Instagram, Youtube, Video, AlertCircle, Loader2, Copy, Check, Wand2, Type, Calendar, Languages, FileText, Link2, Scissors, Crosshair, TrendingUp } from 'lucide-react';
+import { Download, Share2, Instagram, Youtube, Video, AlertCircle, Loader2, Copy, Check, Wand2, Type, Calendar, Languages, FileText, Link2, Scissors, Crosshair, TrendingUp, ExternalLink } from 'lucide-react';
 import { getApiUrl } from '../config';
 import { apiFetch } from '../lib/api';
 import { track } from '../lib/analytics';
@@ -243,7 +243,11 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
         youtube_account_name: '',
         instagram_connected: false,
         instagram_account_name: '',
+        youtube_accounts: [],
+        instagram_accounts: [],
     });
+    const [selectedYtAccountId, setSelectedYtAccountId] = useState('');
+    const [selectedIgAccountId, setSelectedIgAccountId] = useState('');
 
     const [isEditing, setIsEditing] = useState(false);
     const [isSubtitling, setIsSubtitling] = useState(false);
@@ -322,6 +326,8 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                         youtube: !!d.youtube_connected,
                         instagram: !!d.instagram_connected,
                     });
+                    if (d.youtube_accounts?.length) setSelectedYtAccountId(d.youtube_accounts[0].id);
+                    if (d.instagram_accounts?.length) setSelectedIgAccountId(d.instagram_accounts[0].id);
                 })
                 .catch(() => {});
             // Only preselect platforms the profile can actually publish to.
@@ -679,6 +685,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                         title: postTitle,
                         description: postDescription,
                         privacy_status: privacyStatus,
+                        account_id: selectedYtAccountId ? Number(selectedYtAccountId) : null,
                     }),
                 });
                 if (!ytRes.ok) {
@@ -699,6 +706,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                         job_id: jobId,
                         clip_index: index,
                         caption: postDescription,
+                        account_id: selectedIgAccountId ? Number(selectedIgAccountId) : null,
                     }),
                 });
                 if (!igRes.ok) {
@@ -721,6 +729,20 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                     success: true,
                     msg: "Published successfully!",
                     links,
+                });
+            }
+
+            if (links.length > 0) {
+                clip.published_posts = clip.published_posts || [];
+                links.forEach((l) => {
+                    const plat = l.platform.toLowerCase().includes('youtube') ? 'youtube' : 'instagram';
+                    if (!clip.published_posts.some((p) => p.url === l.url)) {
+                        clip.published_posts.push({
+                            platform: plat,
+                            url: l.url,
+                            status: 'success',
+                        });
+                    }
                 });
             }
         } catch (err) {
@@ -943,11 +965,27 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                             )}
                         </div>
                     )}
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                         {durationReadout && <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0">{durationReadout}</span>}
                         {resolution && <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0">{resolution}</span>}
                         <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0">#shorts</span>
                         <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0">#viral</span>
+                        {clip.published_posts && clip.published_posts.length > 0 && (
+                            clip.published_posts.map((post, pIdx) => (
+                                <a
+                                    key={pIdx}
+                                    href={post.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-mono font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors shrink-0"
+                                    title={`Posted to ${post.platform === 'youtube' ? 'YouTube Shorts' : 'Instagram Reels'}${post.account_name ? ` (${post.account_name})` : ''}`}
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                                    <span>Posted ({post.platform === 'youtube' ? 'YouTube' : 'Instagram'})</span>
+                                    <ExternalLink size={10} />
+                                </a>
+                            ))
+                        )}
                     </div>
                 </div>
 
@@ -1205,6 +1243,40 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                                     </span>
                                 </button>
                             </div>
+
+                            {directPlatforms.youtube && socialSettings.youtube_accounts?.length > 1 && (
+                                <div className="mt-2.5">
+                                    <label className="text-[10px] font-mono text-muted uppercase block mb-1">Target YouTube Channel</label>
+                                    <select
+                                        value={selectedYtAccountId}
+                                        onChange={(e) => setSelectedYtAccountId(e.target.value)}
+                                        className="input-field text-xs select cursor-pointer"
+                                    >
+                                        {socialSettings.youtube_accounts.map((acc) => (
+                                            <option key={acc.id} value={acc.id}>
+                                                {acc.account_name || `Account #${acc.id}`} {acc.account_id ? `(${acc.account_id})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {directPlatforms.instagram && socialSettings.instagram_accounts?.length > 1 && (
+                                <div className="mt-2.5">
+                                    <label className="text-[10px] font-mono text-muted uppercase block mb-1">Target Instagram Account</label>
+                                    <select
+                                        value={selectedIgAccountId}
+                                        onChange={(e) => setSelectedIgAccountId(e.target.value)}
+                                        className="input-field text-xs select cursor-pointer"
+                                    >
+                                        {socialSettings.instagram_accounts.map((acc) => (
+                                            <option key={acc.id} value={acc.id}>
+                                                {acc.account_name ? `@${acc.account_name}` : `Account #${acc.id}`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
 
                         <div>

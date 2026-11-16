@@ -3228,6 +3228,8 @@ _DELIVERY_STEPS = (
     # Autopilot bookkeeping + autopublish (before the clips-ready email,
     # which it replaces for its own jobs).
     ("autopilot", lambda jid, job: _autopilot_job_finished(jid, job)),
+    # Native direct auto-posting to selected YouTube / Instagram accounts
+    ("autopost", lambda jid, job: _autopost_job_finished(jid, job)),
     # The caller's webhook (after the archive, so durable links exist).
     ("webhook", lambda jid, job: _notify_job_webhook(jid)),
     # Operational alerting (proxy out of credits / failures) and analytics.
@@ -3571,6 +3573,48 @@ async def _autopilot_job_finished(job_id, job):
         await cloud.autopilot.on_job_finished(job_id, job, reason)
     except Exception as e:
         print(f"⚠️  Autopilot completion error for {job_id}: {e}")
+
+
+async def _autopost_job_finished(job_id, job):
+    """Auto-post generated clips to linked YouTube and/or Instagram accounts."""
+    if not job or job.get('status') != 'completed':
+        return
+
+    auto_post_cfg = job.get('auto_post')
+    if not auto_post_cfg:
+        try:
+            job_dir = os.path.join(OUTPUT_DIR, job_id)
+            info_file = os.path.join(job_dir, "_project_info.json")
+            if os.path.exists(info_file):
+                with open(info_file, "r", encoding="utf-8") as f:
+                    idata = json.load(f)
+                auto_post_cfg = {
+                    "enabled": idata.get("auto_post"),
+                    "youtube_account_id": idata.get("target_youtube_account_id"),
+                    "instagram_account_id": idata.get("target_instagram_account_id"),
+                }
+        except Exception:
+            pass
+
+    if not auto_post_cfg or not auto_post_cfg.get("enabled"):
+        return
+
+    yt_acc = auto_post_cfg.get("youtube_account_id")
+    ig_acc = auto_post_cfg.get("instagram_account_id")
+    if not yt_acc and not ig_acc:
+        return
+
+    try:
+        import auto_poster
+        print(f"[app] 🚀 Triggering sequential auto-post for completed job {job_id} (YT={yt_acc}, IG={ig_acc})...")
+        await auto_poster.post_all_project_clips_sequentially(
+            job_id=job_id,
+            youtube_account_id=yt_acc,
+            instagram_account_id=ig_acc,
+            request_base_url=job.get("base_url"),
+        )
+    except Exception as e:
+        print(f"⚠️ Auto-post completion error for {job_id}: {e}")
 
 
 def _clips_ready_url():
@@ -5654,6 +5698,9 @@ async def process_endpoint(
     source_end: Optional[str] = Form(None),
     subtitle_script: Optional[str] = Form(None),
     metadata_script: Optional[str] = Form(None),
+    post_youtube_account_id: Optional[str] = Form(None),
+    post_instagram_account_id: Optional[str] = Form(None),
+    auto_post: Optional[str] = Form(None),
 ):
     api_key = await resolve_gemini(request)
     if not api_key:
@@ -5693,6 +5740,13 @@ async def process_endpoint(
         source_end = body.get("source_end")
         subtitle_script = body.get("subtitle_script") or subtitle_script
         metadata_script = body.get("metadata_script") or metadata_script
+        post_youtube_account_id = body.get("post_youtube_account_id") or post_youtube_account_id
+        post_instagram_account_id = body.get("post_instagram_account_id") or post_instagram_account_id
+        auto_post = body.get("auto_post") or auto_post
+
+    target_yt_id = int(post_youtube_account_id) if post_youtube_account_id and str(post_youtube_account_id).isdigit() else None
+    target_ig_id = int(post_instagram_account_id) if post_instagram_account_id and str(post_instagram_account_id).isdigit() else None
+    auto_post_flag = str(auto_post).lower() in ("1", "true", "yes") or bool(target_yt_id or target_ig_id)
 
     # Normalize output format (auto = keep pipeline default).
     if output_format not in ("vertical", "horizontal", "square"):
@@ -6028,7 +6082,13 @@ async def process_endpoint(
 
     try:
         with open(os.path.join(job_output_dir, "_project_info.json"), "w", encoding="utf-8") as f:
-            json.dump({"title": job_title, "status": "queued"}, f)
+            json.dump({
+                "title": job_title,
+                "status": "queued",
+                "auto_post": auto_post_flag,
+                "target_youtube_account_id": target_yt_id,
+                "target_instagram_account_id": target_ig_id,
+            }, f, indent=2)
     except Exception:
         pass
 
@@ -6049,6 +6109,11 @@ async def process_endpoint(
         'webhook_url': webhook_url,
         'webhook_secret': webhook_secret,
         'base_url': api_base,
+        'auto_post': {
+            'enabled': auto_post_flag,
+            'youtube_account_id': target_yt_id,
+            'instagram_account_id': target_ig_id,
+        },
         # Read by the ClipsDelivered/JobFailed analytics event (plan).
         'user_plan': user_plan,
         # API callers poll or get the webhook; the clips-ready email is for
@@ -6090,6 +6155,112 @@ async def process_endpoint(
 
     return {"job_id": job_id, "status": "queued", "partial": partial,
             "first_video": bool(getattr(request.state, "first_video", False))}
+
+
+def submit_monitored_video_job(
+    video_url: str,
+    title: str,
+    layout: str = "gaming",
+    subtitle_script: str = "auto",
+    target_youtube_account_id: Optional[int] = None,
+    target_instagram_account_id: Optional[int] = None,
+    auto_post: bool = False,
+    channel_name: str = "",
+    channel_url: str = "",
+) -> str:
+    """Submit a video clipping job for an uploaded creator video from monitor."""
+    job_id = str(uuid.uuid4())
+    job_output_dir = os.path.join(OUTPUT_DIR, job_id)
+    os.makedirs(job_output_dir, exist_ok=True)
+
+    cmd = [sys.executable, "-u", "main.py", "--url", video_url, "--format", "vertical"]
+    env = child_env()
+
+    import database
+    db_provider = database.get_setting("llm_provider") or "openai"
+    env["LLM_PROVIDER"] = db_provider
+    db_base_url = database.get_setting("llm_base_url")
+    if db_base_url:
+        env["LLM_BASE_URL"] = db_base_url
+    db_api_key = database.get_setting("llm_api_key")
+    if db_api_key:
+        env["LLM_API_KEY"] = db_api_key
+    db_model = database.get_setting("llm_model")
+    if db_model:
+        env["LLM_MODEL"] = db_model
+
+    db_trans_prov = database.get_setting("transcription_provider") or "local"
+    env["TRANSCRIPTION_PROVIDER"] = db_trans_prov
+    db_groq_key = database.get_setting("groq_api_key")
+    if db_groq_key:
+        env["GROQ_API_KEY"] = db_groq_key
+    db_groq_model = database.get_setting("groq_whisper_model")
+    if db_groq_model:
+        env["GROQ_WHISPER_MODEL"] = db_groq_model
+
+    if database.get_setting("gemini_api_key"):
+        env["GEMINI_API_KEY"] = database.get_setting("gemini_api_key")
+
+    chosen = layout_env([layout] if layout else [])
+    env.update(chosen)
+
+    if subtitle_script:
+        env["SUBTITLE_SCRIPT"] = str(subtitle_script).strip().lower()
+
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+
+    auto_post_flag = bool(auto_post) or bool(target_youtube_account_id or target_instagram_account_id)
+
+    try:
+        with open(os.path.join(job_output_dir, "_project_info.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "title": title,
+                "status": "queued",
+                "channel_name": channel_name,
+                "channel_url": channel_url,
+                "auto_post": auto_post_flag,
+                "target_youtube_account_id": target_youtube_account_id,
+                "target_instagram_account_id": target_instagram_account_id,
+            }, f, indent=2)
+    except Exception:
+        pass
+
+    _end_submission(job_id)
+    jobs[job_id] = {
+        'status': 'queued',
+        'title': title,
+        'logs': _TimedLog([f"Monitored video job {job_id} queued for {title}."]),
+        'cmd': cmd,
+        'env': env,
+        'output_dir': job_output_dir,
+        'attestation': {'acknowledged': True, 'source': 'monitor'},
+        'user_id': None,
+        'reservation_id': None,
+        'watermark': False,
+        'partial': None,
+        'webhook_url': None,
+        'webhook_secret': None,
+        'base_url': os.environ.get("PUBLIC_API_URL", "").rstrip("/"),
+        'user_plan': 'byok',
+        'via_api_key': False,
+        'lane': _queue_mode.NORMAL,
+        'submitted_at': _arrival_now(),
+        'topup': False,
+        'auto_post': {
+            'enabled': auto_post_flag,
+            'youtube_account_id': target_youtube_account_id,
+            'instagram_account_id': target_instagram_account_id,
+        },
+    }
+
+    _write_resume_manifest(job_id, cmd, priority=2, user_id=None, reservation_id=None,
+                           watermark=False, base_url=jobs[job_id]['base_url'],
+                           via_api_key=False, lane=_queue_mode.NORMAL,
+                           submitted_at=jobs[job_id]['submitted_at'], topup=False)
+
+    _enqueue_job(job_id, priority=2)
+    print(f"🎬 [stream_monitor] Enqueued new video clipping job: {job_id} ('{title}')")
+    return job_id
 
 def _job_view_from_disk(job_id):
     """What the disk says about a job this instance does not hold in memory.

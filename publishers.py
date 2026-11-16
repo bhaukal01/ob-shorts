@@ -76,15 +76,22 @@ def get_youtube_redirect_uri(request_base_url: Optional[str] = None) -> str:
     return f"{base}/api/publish/youtube/callback"
 
 
-def get_youtube_auth_url(request_base_url: Optional[str] = None) -> str:
-    account = database.get_social_account("youtube")
-    client_id = (account.get("client_id") if account else None) or os.environ.get("YOUTUBE_CLIENT_ID", "")
-    if not client_id:
+def get_youtube_auth_url(request_base_url: Optional[str] = None, client_id: Optional[str] = None) -> str:
+    cid = client_id
+    if not cid:
+        account = database.get_social_account("youtube")
+        cid = (account.get("client_id") if account else None) or os.environ.get("YOUTUBE_CLIENT_ID", "")
+    if not cid:
+        for acc in database.list_social_accounts("youtube"):
+            if acc.get("client_id"):
+                cid = acc["client_id"]
+                break
+    if not cid:
         raise ValueError("YouTube OAuth Client ID is not configured. Please save credentials in Settings.")
 
     redirect_uri = get_youtube_redirect_uri(request_base_url)
     params = {
-        "client_id": client_id,
+        "client_id": cid,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": YOUTUBE_SCOPE,
@@ -100,6 +107,12 @@ async def exchange_youtube_code(code: str, request_base_url: Optional[str] = Non
     account = database.get_social_account("youtube") or {}
     client_id = account.get("client_id") or os.environ.get("YOUTUBE_CLIENT_ID", "")
     client_secret = account.get("client_secret") or os.environ.get("YOUTUBE_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        for acc in database.list_social_accounts("youtube"):
+            if acc.get("client_id") and acc.get("client_secret"):
+                client_id = acc["client_id"]
+                client_secret = acc["client_secret"]
+                break
     if not client_id or not client_secret:
         raise ValueError("YouTube OAuth credentials (client_id/client_secret) not found.")
 
@@ -141,28 +154,29 @@ async def exchange_youtube_code(code: str, request_base_url: Optional[str] = Non
     except Exception as e:
         print(f"[YouTube] Warning: failed to fetch channel details: {e}")
 
-    database.save_social_account(
+    row_id = database.save_social_account(
         platform="youtube",
         client_id=client_id,
         client_secret=client_secret,
         account_id=channel_id,
-        account_name=channel_title or account.get("account_name", ""),
+        account_name=channel_title or account.get("account_name", "") or "YouTube Channel",
         access_token=access_token,
         refresh_token=refresh_token,
         token_expiry=token_expiry,
     )
     return {
+        "id": row_id,
         "channel_id": channel_id,
         "channel_title": channel_title,
         "token_expiry": token_expiry,
     }
 
 
-async def get_valid_youtube_access_token() -> str:
-    """Return a valid YouTube access token, automatically refreshing if expired."""
-    account = database.get_social_account("youtube")
+async def get_valid_youtube_access_token(account_id: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
+    """Return a valid YouTube access token and account record, automatically refreshing if expired."""
+    account = database.get_social_account("youtube", account_id=account_id)
     if not account:
-        raise ValueError("YouTube account is not connected.")
+        raise ValueError(f"YouTube account {f'(ID: {account_id}) ' if account_id else ''}is not connected.")
 
     client_id = account.get("client_id") or os.environ.get("YOUTUBE_CLIENT_ID", "")
     client_secret = account.get("client_secret") or os.environ.get("YOUTUBE_CLIENT_SECRET", "")
@@ -190,13 +204,16 @@ async def get_valid_youtube_access_token() -> str:
             token_expiry = int(time.time()) + expires_in
             database.save_social_account(
                 platform="youtube",
+                id=account.get("id"),
                 access_token=access_token,
                 token_expiry=token_expiry,
             )
+            account["access_token"] = access_token
+            account["token_expiry"] = token_expiry
 
     if not access_token:
         raise RuntimeError("No valid YouTube access token available. Please reconnect your YouTube account.")
-    return access_token
+    return access_token, account
 
 
 async def upload_youtube_shorts(
@@ -205,6 +222,7 @@ async def upload_youtube_shorts(
     description: str = "",
     tags: Optional[List[str]] = None,
     privacy_status: str = "public",
+    account_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Upload an MP4 video to YouTube Shorts using Resumable Upload protocol."""
     if not os.path.exists(file_path):
@@ -214,10 +232,70 @@ async def upload_youtube_shorts(
     if file_size == 0:
         raise ValueError("Video file is empty (0 bytes)")
 
-    access_token = await get_valid_youtube_access_token()
+    access_token, account = await get_valid_youtube_access_token(account_id=account_id)
 
     # Ensure #Shorts is present in title or description
     desc = description or ""
+    if "#shorts" not in desc.lower() and "#shorts" not in title.lower():
+        desc = f"{desc}\n\n#Shorts".strip()
+
+    metadata = {
+        "snippet": {
+            "title": title[:100],  # YouTube title limit
+            "description": desc[:5000],
+            "tags": tags or ["Shorts", "OpenShorts"],
+            "categoryId": "22",  # People & Blogs
+        },
+        "status": {
+            "privacyStatus": privacy_status if privacy_status in ("public", "unlisted", "private") else "public",
+            "selfDeclaredMadeForKids": False,
+        },
+    }
+
+    init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Length": str(file_size),
+        "X-Upload-Content-Type": "video/mp4",
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        # Step 1: Initiate resumable upload session
+        init_resp = await client.post(init_url, headers=headers, json=metadata)
+        if init_resp.status_code not in (200, 201):
+            raise RuntimeError(f"Failed to initiate YouTube upload: HTTP {init_resp.status_code} - {init_resp.text}")
+
+        upload_url = init_resp.headers.get("Location")
+        if not upload_url:
+            raise RuntimeError("YouTube API did not return an upload session Location header.")
+
+    # Step 2: Upload file bytes
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        with open(file_path, "rb") as f:
+            upload_headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "video/mp4",
+                "Content-Length": str(file_size),
+            }
+            upload_resp = await client.put(upload_url, headers=upload_headers, content=f.read())
+
+        if upload_resp.status_code not in (200, 201):
+            raise RuntimeError(f"YouTube upload transfer failed: HTTP {upload_resp.status_code} - {upload_resp.text}")
+
+        result_data = upload_resp.json()
+
+    video_id = result_data.get("id", "")
+    shorts_url = f"https://youtube.com/shorts/{video_id}" if video_id else ""
+    return {
+        "video_id": video_id,
+        "remote_url": shorts_url,
+        "title": title,
+        "status": "published",
+        "account_id": account.get("id"),
+        "account_name": account.get("account_name", ""),
+        "raw": result_data,
+    }
     if "#shorts" not in desc.lower() and "#shorts" not in title.lower():
         desc = f"{desc}\n\n#Shorts".strip()
 
@@ -301,23 +379,24 @@ async def verify_and_save_instagram_credentials(ig_user_id: str, access_token: s
         data = resp.json()
 
     username = data.get("username") or clean_id
-    database.save_social_account(
+    row_id = database.save_social_account(
         platform="instagram",
         account_id=clean_id,
         account_name=username,
         access_token=clean_token,
     )
-    return {"account_id": clean_id, "username": username}
+    return {"id": row_id, "account_id": clean_id, "username": username}
 
 
 async def upload_instagram_reels(
     signed_video_url: str,
     caption: str = "",
+    account_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Publish a Reel to Instagram Graph API using container creation, polling, and publish."""
-    account = database.get_social_account("instagram")
+    account = database.get_social_account("instagram", account_id=account_id)
     if not account or not account.get("access_token") or not account.get("account_id"):
-        raise ValueError("Instagram credentials not configured. Please save your IG Account ID and Token in Settings.")
+        raise ValueError(f"Instagram credentials {f'(ID: {account_id}) ' if account_id else ''}not configured. Please connect your Instagram Account in Settings.")
 
     ig_user_id = account["account_id"]
     access_token = account["access_token"]
@@ -388,6 +467,8 @@ async def upload_instagram_reels(
         "media_id": media_id,
         "remote_url": permalink or f"https://www.instagram.com/reel/{media_id}",
         "status": "published",
+        "account_id": account.get("id"),
+        "account_name": account.get("account_name", ""),
         "creation_id": creation_id,
     }
 

@@ -81,7 +81,8 @@ def init_db() -> None:
         # 2. social_accounts
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS social_accounts (
-                platform TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT,
                 client_id TEXT,
                 client_secret TEXT,
                 account_id TEXT,
@@ -90,6 +91,7 @@ def init_db() -> None:
                 refresh_token TEXT,
                 token_expiry INTEGER,
                 extra_json TEXT,
+                is_default INTEGER DEFAULT 0,
                 updated_at TIMESTAMP
             )
         """)
@@ -122,17 +124,91 @@ def init_db() -> None:
                 last_checked TIMESTAMP,
                 last_live TIMESTAMP,
                 current_job_id TEXT,
+                monitor_mode TEXT DEFAULT 'stream',
+                target_youtube_account_id INTEGER,
+                target_instagram_account_id INTEGER,
+                auto_post INTEGER DEFAULT 0,
+                seen_video_ids TEXT DEFAULT '[]',
                 created_at TIMESTAMP
             )
         """)
         conn.commit()
 
-        # Migrate existing schema if current_job_id is missing
+        # Migrate social_accounts if old single-platform schema is present
         try:
-            cursor.execute("ALTER TABLE live_monitors ADD COLUMN current_job_id TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+            cursor.execute("PRAGMA table_info(social_accounts)")
+            s_cols = [r["name"] for r in cursor.fetchall()]
+            if "id" not in s_cols:
+                cursor.execute("""
+                    CREATE TABLE social_accounts_v2 (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        platform TEXT,
+                        client_id TEXT,
+                        client_secret TEXT,
+                        account_id TEXT,
+                        account_name TEXT,
+                        access_token TEXT,
+                        refresh_token TEXT,
+                        token_expiry INTEGER,
+                        extra_json TEXT,
+                        is_default INTEGER DEFAULT 0,
+                        updated_at TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    INSERT INTO social_accounts_v2 (
+                        platform, client_id, client_secret, account_id, account_name,
+                        access_token, refresh_token, token_expiry, extra_json, is_default, updated_at
+                    )
+                    SELECT platform, client_id, client_secret, account_id, account_name,
+                           access_token, refresh_token, token_expiry, extra_json, 1, updated_at
+                    FROM social_accounts
+                """)
+                cursor.execute("DROP TABLE social_accounts")
+                cursor.execute("ALTER TABLE social_accounts_v2 RENAME TO social_accounts")
+                conn.commit()
+        except Exception as e:
+            print(f"⚠️ social_accounts migration notice: {e}")
+
+        # Migrate live_monitors columns if missing
+        cursor.execute("PRAGMA table_info(live_monitors)")
+        m_cols = [r["name"] for r in cursor.fetchall()]
+        if "current_job_id" not in m_cols:
+            try:
+                cursor.execute("ALTER TABLE live_monitors ADD COLUMN current_job_id TEXT")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        if "monitor_mode" not in m_cols:
+            try:
+                cursor.execute("ALTER TABLE live_monitors ADD COLUMN monitor_mode TEXT DEFAULT 'stream'")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        if "target_youtube_account_id" not in m_cols:
+            try:
+                cursor.execute("ALTER TABLE live_monitors ADD COLUMN target_youtube_account_id INTEGER")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        if "target_instagram_account_id" not in m_cols:
+            try:
+                cursor.execute("ALTER TABLE live_monitors ADD COLUMN target_instagram_account_id INTEGER")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        if "auto_post" not in m_cols:
+            try:
+                cursor.execute("ALTER TABLE live_monitors ADD COLUMN auto_post INTEGER DEFAULT 0")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        if "seen_video_ids" not in m_cols:
+            try:
+                cursor.execute("ALTER TABLE live_monitors ADD COLUMN seen_video_ids TEXT DEFAULT '[]'")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
         # Seed settings from .env / os.environ on first run
         _seed_settings(cursor, conn)
@@ -244,11 +320,39 @@ def update_settings(updates: Dict[str, Any]) -> None:
         conn.commit()
 
 
-def get_social_account(platform: str) -> Optional[Dict[str, Any]]:
-    """Retrieve OAuth credentials and token info for a platform (youtube, instagram)."""
+def list_social_accounts(platform: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List connected social accounts, optionally filtered by platform."""
     with _LOCK, get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM social_accounts WHERE platform = ?", (platform.lower(),))
+        if platform:
+            cursor.execute(
+                "SELECT * FROM social_accounts WHERE platform = ? ORDER BY is_default DESC, id ASC",
+                (platform.lower(),),
+            )
+        else:
+            cursor.execute("SELECT * FROM social_accounts ORDER BY platform ASC, is_default DESC, id ASC")
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def get_social_account_by_id(account_id: int) -> Optional[Dict[str, Any]]:
+    """Retrieve social account credentials by primary key ID."""
+    with _LOCK, get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM social_accounts WHERE id = ?", (int(account_id),))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def get_social_account(platform: str, account_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve OAuth credentials for a platform, optionally specifying account ID."""
+    if account_id is not None:
+        return get_social_account_by_id(account_id)
+    with _LOCK, get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM social_accounts WHERE platform = ? ORDER BY is_default DESC, id ASC LIMIT 1",
+            (platform.lower(),),
+        )
         row = cursor.fetchone()
         if not row:
             return None
@@ -265,26 +369,38 @@ def save_social_account(
     refresh_token: Optional[str] = None,
     token_expiry: Optional[int] = None,
     extra_json: Optional[str] = None,
-) -> None:
-    """Save or update social account credentials and tokens."""
+    is_default: Optional[int] = None,
+    id: Optional[int] = None,
+) -> int:
+    """Save or update social account credentials and tokens. Returns row ID."""
     plat = platform.lower()
     now = _now_iso()
     with _LOCK, get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM social_accounts WHERE platform = ?", (plat,))
-        existing = cursor.fetchone()
-        
-        if existing:
-            # Update only provided non-None fields
+        target_row = None
+        if id is not None:
+            cursor.execute("SELECT * FROM social_accounts WHERE id = ?", (id,))
+            target_row = cursor.fetchone()
+        elif account_id:
+            cursor.execute("SELECT * FROM social_accounts WHERE platform = ? AND account_id = ?", (plat, str(account_id)))
+            target_row = cursor.fetchone()
+        elif client_id or client_secret:
+            # Updating platform credentials without specific account
+            cursor.execute("SELECT * FROM social_accounts WHERE platform = ? ORDER BY id ASC LIMIT 1", (plat,))
+            target_row = cursor.fetchone()
+
+        if target_row:
+            row_id = target_row["id"]
             fields = {
-                "client_id": client_id if client_id is not None else existing["client_id"],
-                "client_secret": client_secret if client_secret is not None else existing["client_secret"],
-                "account_id": account_id if account_id is not None else existing["account_id"],
-                "account_name": account_name if account_name is not None else existing["account_name"],
-                "access_token": access_token if access_token is not None else existing["access_token"],
-                "refresh_token": refresh_token if refresh_token is not None else existing["refresh_token"],
-                "token_expiry": token_expiry if token_expiry is not None else existing["token_expiry"],
-                "extra_json": extra_json if extra_json is not None else existing["extra_json"],
+                "client_id": client_id if client_id is not None else target_row["client_id"],
+                "client_secret": client_secret if client_secret is not None else target_row["client_secret"],
+                "account_id": account_id if account_id is not None else target_row["account_id"],
+                "account_name": account_name if account_name is not None else target_row["account_name"],
+                "access_token": access_token if access_token is not None else target_row["access_token"],
+                "refresh_token": refresh_token if refresh_token is not None else target_row["refresh_token"],
+                "token_expiry": token_expiry if token_expiry is not None else target_row["token_expiry"],
+                "extra_json": extra_json if extra_json is not None else target_row["extra_json"],
+                "is_default": is_default if is_default is not None else target_row["is_default"],
                 "updated_at": now,
             }
             cursor.execute(
@@ -298,18 +414,21 @@ def save_social_account(
                     refresh_token = :refresh_token,
                     token_expiry = :token_expiry,
                     extra_json = :extra_json,
+                    is_default = :is_default,
                     updated_at = :updated_at
-                WHERE platform = :platform
+                WHERE id = :row_id
                 """,
-                {**fields, "platform": plat},
+                {**fields, "row_id": row_id},
             )
+            conn.commit()
+            return row_id
         else:
             cursor.execute(
                 """
                 INSERT INTO social_accounts (
                     platform, client_id, client_secret, account_id, account_name,
-                    access_token, refresh_token, token_expiry, extra_json, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    access_token, refresh_token, token_expiry, extra_json, is_default, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     plat,
@@ -321,18 +440,24 @@ def save_social_account(
                     refresh_token or "",
                     token_expiry or 0,
                     extra_json or "{}",
+                    is_default or 0,
                     now,
                 ),
             )
-        conn.commit()
+            conn.commit()
+            return cursor.lastrowid or 0
 
 
-def delete_social_account(platform: str) -> None:
-    """Remove social account credentials for a platform."""
+def delete_social_account(account_target: Any) -> bool:
+    """Remove social account credentials by ID or platform."""
     with _LOCK, get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM social_accounts WHERE platform = ?", (platform.lower(),))
+        if isinstance(account_target, int) or (isinstance(account_target, str) and account_target.isdigit()):
+            cursor.execute("DELETE FROM social_accounts WHERE id = ?", (int(account_target),))
+        else:
+            cursor.execute("DELETE FROM social_accounts WHERE platform = ?", (str(account_target).lower(),))
         conn.commit()
+        return cursor.rowcount > 0
 
 
 def add_publish_log(
@@ -409,8 +534,13 @@ def add_live_monitor(
     layout: str = "gaming",
     auto_clip: int = 1,
     subtitle_script: str = "auto",
+    monitor_mode: str = "stream",
+    target_youtube_account_id: Optional[int] = None,
+    target_instagram_account_id: Optional[int] = None,
+    auto_post: int = 0,
+    seen_video_ids: str = "[]",
 ) -> int:
-    """Add a channel to track for live streams."""
+    """Add a channel to track for live streams and/or video uploads."""
     now = _now_iso()
     with _LOCK, get_connection() as conn:
         cursor = conn.cursor()
@@ -418,14 +548,21 @@ def add_live_monitor(
             """
             INSERT INTO live_monitors (
                 platform, channel_url, channel_name, status, auto_clip,
-                layout, subtitle_script, last_checked, created_at
-            ) VALUES (?, ?, ?, 'offline', ?, ?, ?, ?, ?)
+                layout, subtitle_script, last_checked, monitor_mode,
+                target_youtube_account_id, target_instagram_account_id,
+                auto_post, seen_video_ids, created_at
+            ) VALUES (?, ?, ?, 'offline', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(channel_url) DO UPDATE SET
                 platform = excluded.platform,
                 channel_name = CASE WHEN excluded.channel_name != '' THEN excluded.channel_name ELSE live_monitors.channel_name END,
                 auto_clip = excluded.auto_clip,
                 layout = excluded.layout,
-                subtitle_script = excluded.subtitle_script
+                subtitle_script = excluded.subtitle_script,
+                monitor_mode = excluded.monitor_mode,
+                target_youtube_account_id = excluded.target_youtube_account_id,
+                target_instagram_account_id = excluded.target_instagram_account_id,
+                auto_post = excluded.auto_post,
+                seen_video_ids = CASE WHEN live_monitors.seen_video_ids IS NOT NULL AND live_monitors.seen_video_ids != '[]' THEN live_monitors.seen_video_ids ELSE excluded.seen_video_ids END
             """,
             (
                 platform.lower(),
@@ -435,6 +572,11 @@ def add_live_monitor(
                 layout,
                 subtitle_script,
                 now,
+                monitor_mode,
+                target_youtube_account_id,
+                target_instagram_account_id,
+                auto_post,
+                seen_video_ids,
                 now,
             ),
         )
@@ -450,6 +592,11 @@ def update_live_monitor(
     last_live: Optional[str] = None,
     auto_clip: Optional[int] = None,
     current_job_id: Optional[str] = None,
+    monitor_mode: Optional[str] = None,
+    target_youtube_account_id: Optional[int] = None,
+    target_instagram_account_id: Optional[int] = None,
+    auto_post: Optional[int] = None,
+    seen_video_ids: Optional[str] = None,
 ) -> None:
     """Update live monitor status and timestamps."""
     updates = []
@@ -472,6 +619,21 @@ def update_live_monitor(
     if current_job_id is not None:
         updates.append("current_job_id = ?")
         params.append(current_job_id)
+    if monitor_mode is not None:
+        updates.append("monitor_mode = ?")
+        params.append(monitor_mode)
+    if target_youtube_account_id is not None:
+        updates.append("target_youtube_account_id = ?")
+        params.append(target_youtube_account_id)
+    if target_instagram_account_id is not None:
+        updates.append("target_instagram_account_id = ?")
+        params.append(target_instagram_account_id)
+    if auto_post is not None:
+        updates.append("auto_post = ?")
+        params.append(auto_post)
+    if seen_video_ids is not None:
+        updates.append("seen_video_ids = ?")
+        params.append(seen_video_ids)
 
     if not updates:
         return

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2 } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import McpConnectCard from './components/McpConnectCard';
@@ -372,6 +372,37 @@ function App() {
   const [igAccessToken, setIgAccessToken] = useState('');
   const [igSaving, setIgSaving] = useState(false);
   const [igStatusMsg, setIgStatusMsg] = useState('');
+
+  // Multi-account social connections
+  const [youtubeAccounts, setYoutubeAccounts] = useState([]);
+  const [instagramAccounts, setInstagramAccounts] = useState([]);
+
+  const fetchSocialAccounts = async () => {
+    try {
+      const res = await apiFetch('/api/publish/accounts');
+      if (res.ok) {
+        const d = await res.json();
+        const accs = d.accounts || [];
+        setYoutubeAccounts(accs.filter((a) => a.platform === 'youtube'));
+        setInstagramAccounts(accs.filter((a) => a.platform === 'instagram'));
+      }
+    } catch (e) {
+      console.error('Failed to fetch social accounts', e);
+    }
+  };
+
+  const handleDeleteSocialAccount = async (id) => {
+    if (!confirm('Disconnect and remove this social account?')) return;
+    try {
+      const res = await apiFetch(`/api/publish/accounts/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchSocialAccounts();
+        await loadBackendSettings();
+      }
+    } catch (e) {
+      console.error('Failed to delete social account', e);
+    }
+  };
 
   const [uploadUserId, setUploadUserId] = useState(() => localStorage.getItem('uploadUserId') || '');
   const [userProfiles, setUserProfiles] = useState([]); // List of {username, connected: []}
@@ -846,6 +877,8 @@ function App() {
           if (data.social.youtube?.client_id) setYtClientId(data.social.youtube.client_id);
           if (data.social.instagram?.account_id) setIgAccountId(data.social.instagram.account_id);
         }
+        if (data.youtube_accounts) setYoutubeAccounts(data.youtube_accounts);
+        if (data.instagram_accounts) setInstagramAccounts(data.instagram_accounts);
       }
     } catch (err) {
       console.error('Failed to load settings from SQLite:', err);
@@ -1096,6 +1129,9 @@ function App() {
         const data = await res.json();
         setIgStatusMsg(`Verified & Connected as @${data.username}!`);
         loadBackendSettings();
+        fetchSocialAccounts();
+        setIgAccountId('');
+        setIgAccessToken('');
       } else {
         const err = await res.json().catch(() => ({ detail: 'Verification failed' }));
         setIgStatusMsg(`Error: ${err.detail || 'Verification failed. Check token & ID.'}`);
@@ -1110,12 +1146,14 @@ function App() {
   // Sync settings and check OAuth redirect outcomes
   useEffect(() => {
     loadBackendSettings();
+    fetchSocialAccounts();
     try {
       const url = new URL(window.location.href);
       const ytParam = url.searchParams.get('youtube') || (url.hash.includes('youtube=') ? new URLSearchParams(url.hash.split('?')[1] || '').get('youtube') : null);
       if (ytParam === 'connected') {
         setActiveTab('settings');
         setYtStatusMsg('YouTube account successfully connected!');
+        fetchSocialAccounts();
       } else if (ytParam === 'error') {
         setActiveTab('settings');
         setYtStatusMsg('Failed to connect YouTube account.');
@@ -1534,6 +1572,9 @@ function App() {
         layouts: data.layout && data.layout !== 'auto' ? data.layout : null,
         subtitle_script: data.subtitleScript && data.subtitleScript !== 'auto' ? data.subtitleScript : null,
         metadata_script: data.metadataScript && data.metadataScript !== 'auto' ? data.metadataScript : null,
+        post_youtube_account_id: data.postYoutubeAccountId ? Number(data.postYoutubeAccountId) : null,
+        post_instagram_account_id: data.postInstagramAccountId ? Number(data.postInstagramAccountId) : null,
+        auto_post: data.autoPost ? 1 : 0,
         // Set when the user took the quota wall's "clip the first N minutes"
         // offer: the server reserves N minutes and cuts the source to them.
         max_minutes: data.maxMinutes || null,
@@ -2655,7 +2696,11 @@ function App() {
                       <p className="text-xs text-muted">Native YouTube Data API v3 integration with OAuth 2.0 resumable uploads</p>
                     </div>
                   </div>
-                  {socialStatus.youtube?.connected ? (
+                  {youtubeAccounts.length > 0 ? (
+                    <span className="badge-ok flex items-center gap-1 text-xs">
+                      <Check size={12} /> {youtubeAccounts.length} Channel{youtubeAccounts.length > 1 ? 's' : ''} Connected
+                    </span>
+                  ) : socialStatus.youtube?.connected ? (
                     <span className="badge-ok flex items-center gap-1 text-xs">
                       <Check size={12} /> Connected: {socialStatus.youtube.channel_title || 'YouTube Channel'}
                     </span>
@@ -2667,6 +2712,31 @@ function App() {
                 <p className="text-xs text-muted leading-relaxed">
                   Connect your YouTube channel using your own Google Cloud OAuth 2.0 Client credentials. Uploads automatically enforce the <code className="text-brass">#Shorts</code> tag and support public, unlisted, and private visibility.
                 </p>
+
+                {youtubeAccounts.length > 0 && (
+                  <div className="space-y-2 border border-rule rounded-input p-3 bg-paper3/40">
+                    <label className="text-[11px] font-mono uppercase text-muted block">Connected YouTube Channels ({youtubeAccounts.length})</label>
+                    <div className="divide-y divide-rule/60">
+                      {youtubeAccounts.map((acc) => (
+                        <div key={acc.id} className="py-2 flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Youtube size={14} className="text-red-500 shrink-0" />
+                            <span className="font-semibold text-ink truncate">{acc.account_name || 'YouTube Channel'}</span>
+                            {acc.account_id && <span className="text-[11px] font-mono text-muted">({acc.account_id})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSocialAccount(acc.id)}
+                            className="p-1 text-muted hover:text-red-400 rounded transition-colors"
+                            title="Disconnect channel"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Redirect URI Display */}
                 <div className="p-3 bg-paper3 border border-rule rounded-input space-y-1.5">
@@ -2752,7 +2822,11 @@ function App() {
                       <p className="text-xs text-muted">Instagram Graph API v21.0 integration with HMAC-signed media delivery</p>
                     </div>
                   </div>
-                  {socialStatus.instagram?.connected ? (
+                  {instagramAccounts.length > 0 ? (
+                    <span className="badge-ok flex items-center gap-1 text-xs">
+                      <Check size={12} /> {instagramAccounts.length} Account{instagramAccounts.length > 1 ? 's' : ''} Connected
+                    </span>
+                  ) : socialStatus.instagram?.connected ? (
                     <span className="badge-ok flex items-center gap-1 text-xs">
                       <Check size={12} /> Connected: @{socialStatus.instagram.username || 'Instagram'}
                     </span>
@@ -2764,6 +2838,31 @@ function App() {
                 <p className="text-xs text-muted leading-relaxed">
                   Publish Reels directly using your Meta for Developers App credentials. Requires an Instagram Business/Creator account connected to a Facebook page and a long-lived access token.
                 </p>
+
+                {instagramAccounts.length > 0 && (
+                  <div className="space-y-2 border border-rule rounded-input p-3 bg-paper3/40">
+                    <label className="text-[11px] font-mono uppercase text-muted block">Connected Instagram Accounts ({instagramAccounts.length})</label>
+                    <div className="divide-y divide-rule/60">
+                      {instagramAccounts.map((acc) => (
+                        <div key={acc.id} className="py-2 flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Instagram size={14} className="text-pink-500 shrink-0" />
+                            <span className="font-semibold text-ink truncate">@{acc.account_name || 'Instagram'}</span>
+                            {acc.account_id && <span className="text-[11px] font-mono text-muted">({acc.account_id})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSocialAccount(acc.id)}
+                            className="p-1 text-muted hover:text-red-400 rounded transition-colors"
+                            title="Disconnect account"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -2909,7 +3008,11 @@ function App() {
             <div className="h-full overflow-y-auto custom-scrollbar animate-fade">
               <div className="max-w-6xl mx-auto p-4 sm:p-6 md:p-8">
                 <React.Suspense fallback={<div className="p-12 flex justify-center text-muted"><Loader2 className="animate-spin text-brass" size={20} /></div>}>
-                  <LiveStreamTab onReopenProject={(jobId, status) => { setActiveTab('dashboard'); restoreProject(jobId, status); }} />
+                  <LiveStreamTab
+                    onReopenProject={(jobId, status) => { setActiveTab('dashboard'); restoreProject(jobId, status); }}
+                    youtubeAccounts={youtubeAccounts}
+                    instagramAccounts={instagramAccounts}
+                  />
                 </React.Suspense>
               </div>
             </div>
@@ -2957,7 +3060,12 @@ function App() {
                   )}
                 </div>
 
-                <MediaInput onProcess={handleProcess} isProcessing={status === 'processing'} />
+                <MediaInput
+                  onProcess={handleProcess}
+                  isProcessing={status === 'processing'}
+                  youtubeAccounts={youtubeAccounts}
+                  instagramAccounts={instagramAccounts}
+                />
 
                 <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 text-muted text-xs sm:text-sm">
                   <span className="flex items-center gap-2"><Youtube size={16} /> YouTube</span>

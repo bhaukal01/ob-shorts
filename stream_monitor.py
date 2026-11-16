@@ -229,6 +229,9 @@ def get_or_create_stream_project(mon: Dict[str, Any], live_info: Dict[str, Any])
                 "channel_url": channel_url,
                 "platform": platform,
                 "started_at": now_iso,
+                "target_youtube_account_id": mon.get("target_youtube_account_id"),
+                "target_instagram_account_id": mon.get("target_instagram_account_id"),
+                "auto_post": mon.get("auto_post", 0),
             }, f, indent=2)
 
     if not os.path.exists(meta_path):
@@ -242,6 +245,9 @@ def get_or_create_stream_project(mon: Dict[str, Any], live_info: Dict[str, Any])
                 "channel_url": channel_url,
                 "platform": platform,
                 "created_at": now_iso,
+                "target_youtube_account_id": mon.get("target_youtube_account_id"),
+                "target_instagram_account_id": mon.get("target_instagram_account_id"),
+                "auto_post": mon.get("auto_post", 0),
                 "shorts": [],
             }, f, indent=2)
 
@@ -610,6 +616,23 @@ def _render_single_stream_clip(
             pass
 
         _append_stream_log(job_id, f"✅ Clip #{clip_num} published: {final_clip}")
+
+        # Trigger background auto-post if linked social accounts are configured
+        try:
+            yt_acc = meta.get("target_youtube_account_id")
+            ig_acc = meta.get("target_instagram_account_id")
+            auto_p = bool(meta.get("auto_post", 0)) or bool(yt_acc or ig_acc)
+            if auto_p and (yt_acc or ig_acc):
+                import auto_poster
+                _log(f"Auto-posting stream clip #{clip_num} to accounts (YT={yt_acc}, IG={ig_acc})...")
+                auto_poster.trigger_background_auto_post(
+                    job_id=job_id,
+                    youtube_account_id=yt_acc,
+                    instagram_account_id=ig_acc,
+                )
+        except Exception as e:
+            _log(f"Auto-post stream clip trigger notice: {e}")
+
         return final_clip
     except Exception as e:
         _append_stream_log(job_id, f"⚠️ Error rendering live clip: {e}")
@@ -1033,6 +1056,7 @@ def get_creator_streams(monitor_id: int) -> List[Dict[str, Any]]:
                 "stream_url": stream_url or v_url,
                 "duration": c.get("duration", (c.get("end", 0) - c.get("start", 0)) or 30),
                 "created_at": c.get("created_at"),
+                "published_posts": c.get("published_posts") or [],
             })
 
         streams.append({
@@ -1050,8 +1074,105 @@ def get_creator_streams(monitor_id: int) -> List[Dict[str, Any]]:
     return streams
 
 
+def check_channel_new_videos(channel_url: str, seen_ids: List[str]) -> List[Dict[str, Any]]:
+    """Check for newly uploaded videos on a channel using yt-dlp flat playlist extraction."""
+    clean_url = channel_url.strip()
+    if clean_url.endswith("/live"):
+        clean_url = clean_url[:-5]
+    clean_url = clean_url.rstrip("/")
+    if not clean_url.endswith("/videos") and "twitch.tv" not in clean_url:
+        videos_url = f"{clean_url}/videos"
+    else:
+        videos_url = clean_url
+
+    try:
+        cmd = [
+            sys.executable, "-m", "yt_dlp",
+            "--dump-json",
+            "--flat-playlist",
+            "--playlist-end", "5",
+            "--no-warnings",
+            "--socket-timeout", "15",
+            videos_url,
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+        if res.returncode != 0 or not res.stdout.strip():
+            return []
+
+        seen_set = set(seen_ids)
+        new_videos = []
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                vid = data.get("id")
+                if not vid or vid in seen_set:
+                    continue
+                v_title = data.get("title") or "New Video"
+                v_url = data.get("webpage_url") or data.get("url") or f"https://www.youtube.com/watch?v={vid}"
+                new_videos.append({
+                    "id": vid,
+                    "title": v_title,
+                    "url": v_url,
+                    "uploader": data.get("uploader") or data.get("channel") or "",
+                })
+            except Exception:
+                continue
+        return new_videos
+    except Exception as e:
+        _log(f"Check channel new videos failed for {channel_url}: {e}")
+        return []
+
+
+def dispatch_video_upload_job(mon: Dict[str, Any], video_info: Dict[str, Any]) -> str:
+    """Submit a video upload clipping job with creator monitor settings."""
+    vid_url = video_info.get("url") or f"https://www.youtube.com/watch?v={video_info.get('id')}"
+    title = video_info.get("title") or "Creator Upload"
+    layout = mon.get("layout", "gaming")
+    sub_script = mon.get("subtitle_script", "auto")
+    yt_acc = mon.get("target_youtube_account_id")
+    ig_acc = mon.get("target_instagram_account_id")
+    auto_post = bool(mon.get("auto_post", 0))
+
+    try:
+        import app
+        if hasattr(app, "submit_monitored_video_job"):
+            return app.submit_monitored_video_job(
+                video_url=vid_url,
+                title=title,
+                layout=layout,
+                subtitle_script=sub_script,
+                target_youtube_account_id=yt_acc,
+                target_instagram_account_id=ig_acc,
+                auto_post=auto_post,
+                channel_name=mon.get("channel_name", ""),
+                channel_url=mon.get("channel_url", ""),
+            )
+    except Exception as e:
+        _log(f"Notice calling app.submit_monitored_video_job: {e}")
+
+    job_id = f"video_{video_info.get('id', int(time.time()))}"
+    out_base = os.environ.get("OUTPUT_DIR", "output")
+    job_dir = os.path.join(out_base, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    with open(os.path.join(job_dir, "_project_info.json"), "w", encoding="utf-8") as f:
+        json.dump({
+            "title": title,
+            "status": "queued",
+            "url": vid_url,
+            "channel_name": mon.get("channel_name", ""),
+            "channel_url": mon.get("channel_url", ""),
+            "target_youtube_account_id": yt_acc,
+            "target_instagram_account_id": ig_acc,
+            "auto_post": auto_post,
+        }, f, indent=2)
+    return job_id
+
+
 def run_monitor_cycle() -> None:
-    """Run one check-and-process iteration across all tracked live monitors."""
+    """Run one check-and-process iteration across all tracked monitors."""
     monitors = database.list_live_monitors()
     if not monitors:
         return
@@ -1066,42 +1187,68 @@ def run_monitor_cycle() -> None:
         layout = mon.get("layout", "gaming")
         sub_script = mon.get("subtitle_script", "auto")
         auto_clip = bool(mon.get("auto_clip", 1))
+        monitor_mode = mon.get("monitor_mode") or "stream"
 
         now_str = datetime.now(timezone.utc).isoformat()
 
-        # Check if already running a capture worker
-        with _ACTIVE_LOCK:
-            t = _ACTIVE_STREAM_THREADS.get(mid)
-            if t and t.is_alive():
+        # 1. Video Upload Mode: check for newly uploaded videos
+        if monitor_mode in ("video", "both"):
+            try:
+                raw_seen = mon.get("seen_video_ids") or "[]"
+                seen_ids = json.loads(raw_seen)
+                if not seen_ids:
+                    # First run: seed existing videos so only subsequent uploads are detected
+                    existing_vids = check_channel_new_videos(url, [])
+                    seed_ids = [v["id"] for v in existing_vids if v.get("id")]
+                    if seed_ids:
+                        database.update_live_monitor(mid, seen_video_ids=json.dumps(seed_ids), last_checked=now_str)
+                else:
+                    new_vids = check_channel_new_videos(url, seen_ids)
+                    if new_vids:
+                        _log(f"🎬 Detected {len(new_vids)} new upload(s) for monitor {mid} ({url})")
+                        for v in new_vids:
+                            job_id = dispatch_video_upload_job(mon, v)
+                            _log(f"🚀 Dispatched video clipping job {job_id} for {v.get('title')}")
+                            seen_ids.append(v["id"])
+                        database.update_live_monitor(mid, seen_video_ids=json.dumps(seen_ids), last_checked=now_str)
+            except Exception as e:
+                _log(f"Error checking new video uploads for monitor {mid}: {e}")
+
+        # 2. Live Stream Mode: check live stream status
+        if monitor_mode in ("stream", "both"):
+            # Check if already running a capture worker
+            with _ACTIVE_LOCK:
+                t = _ACTIVE_STREAM_THREADS.get(mid)
+                if t and t.is_alive():
+                    continue
+
+            live_info = check_stream_live(url, platform)
+            if not live_info:
+                database.update_live_monitor(mid, status="offline", last_checked=now_str)
                 continue
 
-        live_info = check_stream_live(url, platform)
-        if not live_info:
-            database.update_live_monitor(mid, status="offline", last_checked=now_str)
-            continue
-
-        _log(f"🔴 Live detected for {url}: {live_info['title']}")
-        database.update_live_monitor(
-            mid,
-            status="live",
-            channel_name=live_info.get("channel") or mon.get("channel_name"),
-            last_checked=now_str,
-            last_live=now_str,
-        )
-
-        if not auto_clip:
-            continue
-
-        # Spawn concurrent 10-minute continuous capture thread
-        with _ACTIVE_LOCK:
-            t = threading.Thread(
-                target=_stream_capture_worker,
-                args=(mid, url, platform, layout, sub_script, live_info),
-                daemon=True,
-                name=f"StreamWorker-{mid}",
+            _log(f"🔴 Live detected for {url}: {live_info['title']}")
+            database.update_live_monitor(
+                mid,
+                status="live",
+                channel_name=live_info.get("channel") or mon.get("channel_name"),
+                last_checked=now_str,
+                last_live=now_str,
             )
-            _ACTIVE_STREAM_THREADS[mid] = t
-            t.start()
+
+            if not auto_clip:
+                continue
+
+            # Spawn concurrent 10-minute continuous capture thread
+            with _ACTIVE_LOCK:
+                t = threading.Thread(
+                    target=_stream_capture_worker,
+                    args=(mid, url, platform, layout, sub_script, live_info),
+                    daemon=True,
+                    name=f"StreamWorker-{mid}",
+                )
+                _ACTIVE_STREAM_THREADS[mid] = t
+                t.start()
 
 
 def _monitor_loop() -> None:

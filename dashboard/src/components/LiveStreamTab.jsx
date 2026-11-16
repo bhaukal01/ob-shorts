@@ -3,7 +3,7 @@ import { Radio, Youtube, Plus, Trash2, Check, Loader2, AlertCircle, RefreshCw, S
 import { apiFetch } from '../lib/api';
 import { getApiUrl } from '../config';
 
-export default function LiveStreamTab({ onReopenProject }) {
+export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYtAccounts, instagramAccounts: propIgAccounts }) {
   const [monitors, setMonitors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -12,6 +12,11 @@ export default function LiveStreamTab({ onReopenProject }) {
   const [layout, setLayout] = useState('gaming');
   const [subtitleScript, setSubtitleScript] = useState('auto');
   const [autoClip, setAutoClip] = useState(true);
+  const [monitorMode, setMonitorMode] = useState('both');
+  const [targetYoutubeAccountId, setTargetYoutubeAccountId] = useState('');
+  const [targetInstagramAccountId, setTargetInstagramAccountId] = useState('');
+  const [autoPost, setAutoPost] = useState(true);
+  const [socialAccounts, setSocialAccounts] = useState({ youtube: [], instagram: [] });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -23,6 +28,22 @@ export default function LiveStreamTab({ onReopenProject }) {
 
   // Single active video player modal
   const [activePlayerClip, setActivePlayerClip] = useState(null);
+
+  const fetchAccounts = async () => {
+    try {
+      const res = await apiFetch('/api/publish/accounts');
+      if (res.ok) {
+        const data = await res.json();
+        const accs = data.accounts || [];
+        setSocialAccounts({
+          youtube: accs.filter((a) => a.platform === 'youtube'),
+          instagram: accs.filter((a) => a.platform === 'instagram'),
+        });
+      }
+    } catch (e) {
+      console.error('Failed to load social accounts', e);
+    }
+  };
 
   const fetchMonitors = async () => {
     try {
@@ -40,9 +61,13 @@ export default function LiveStreamTab({ onReopenProject }) {
 
   useEffect(() => {
     fetchMonitors();
+    fetchAccounts();
     const interval = setInterval(fetchMonitors, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const ytAccounts = propYtAccounts?.length ? propYtAccounts : socialAccounts.youtube;
+  const igAccounts = propIgAccounts?.length ? propIgAccounts : socialAccounts.instagram;
 
   const openCreatorStreams = async (mon) => {
     setSelectedCreator(mon);
@@ -77,6 +102,10 @@ export default function LiveStreamTab({ onReopenProject }) {
           layout,
           subtitle_script: subtitleScript,
           auto_clip: autoClip ? 1 : 0,
+          monitor_mode: monitorMode,
+          target_youtube_account_id: targetYoutubeAccountId ? Number(targetYoutubeAccountId) : null,
+          target_instagram_account_id: targetInstagramAccountId ? Number(targetInstagramAccountId) : null,
+          auto_post: autoPost ? 1 : 0,
         }),
       });
       if (!res.ok) {
@@ -134,9 +163,9 @@ export default function LiveStreamTab({ onReopenProject }) {
             <Radio size={24} className="animate-pulse" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-ink">Live Stream Auto-Clipper</h2>
+            <h2 className="text-xl font-bold tracking-tight text-ink">Creator Monitor &amp; Auto-Clipper</h2>
             <p className="text-sm text-muted mt-0.5">
-              Continuously captures rolling 10-minute segments from YouTube and Twitch live streams. Highlights are spotted and clipped into your Library automatically while recording continues without interruption.
+              Continuously track creators for both live streams (rolling 10-minute segments) and new uploaded videos. Generated highlights are sequentially auto-published directly to your designated YouTube Shorts and Instagram Reels accounts.
             </p>
           </div>
         </div>
@@ -174,6 +203,18 @@ export default function LiveStreamTab({ onReopenProject }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             <div>
+              <label className="eyebrow block mb-1.5">Monitor Mode</label>
+              <select
+                value={monitorMode}
+                onChange={(e) => setMonitorMode(e.target.value)}
+                className="input-field"
+              >
+                <option value="both">Both (Live Streams &amp; Uploaded Videos)</option>
+                <option value="stream">Live Streams Only</option>
+                <option value="video">New Uploaded Videos Only</option>
+              </select>
+            </div>
+            <div>
               <label className="eyebrow block mb-1.5">Clipping Layout</label>
               <select
                 value={layout}
@@ -198,17 +239,60 @@ export default function LiveStreamTab({ onReopenProject }) {
                 <option value="hinglish">Hinglish (Roman Script)</option>
               </select>
             </div>
-            <div className="flex items-center gap-2 pt-6">
-              <label className="flex items-center gap-2 text-xs text-ink cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={autoClip}
-                  onChange={(e) => setAutoClip(e.target.checked)}
-                  className="w-4 h-4 rounded accent-red-500"
-                />
-                <span>Auto-generate clips when live</span>
-              </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-rule/50">
+            <div>
+              <label className="eyebrow block mb-1.5">Auto-Post to YouTube Channel</label>
+              <select
+                value={targetYoutubeAccountId}
+                onChange={(e) => setTargetYoutubeAccountId(e.target.value)}
+                className="input-field"
+              >
+                <option value="">-- No Auto-Post to YouTube --</option>
+                {ytAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.account_name || `Account #${acc.id}`} {acc.account_id ? `(${acc.account_id})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
+            <div>
+              <label className="eyebrow block mb-1.5">Auto-Post to Instagram Account</label>
+              <select
+                value={targetInstagramAccountId}
+                onChange={(e) => setTargetInstagramAccountId(e.target.value)}
+                className="input-field"
+              >
+                <option value="">-- No Auto-Post to Instagram --</option>
+                {igAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.account_name ? `@${acc.account_name}` : `Account #${acc.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-6 pt-2">
+            <label className="flex items-center gap-2 text-xs text-ink cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoClip}
+                onChange={(e) => setAutoClip(e.target.checked)}
+                className="w-4 h-4 rounded accent-red-500"
+              />
+              <span>Auto-generate clips from detected content</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoPost}
+                onChange={(e) => setAutoPost(e.target.checked)}
+                className="w-4 h-4 rounded accent-emerald-500"
+              />
+              <span>Auto-post clips sequentially to selected accounts</span>
+            </label>
           </div>
 
           {error && (
@@ -291,9 +375,21 @@ export default function LiveStreamTab({ onReopenProject }) {
                         {mon.platform === 'twitch' ? 'Twitch' : 'YouTube'} Channel <ExternalLink size={11} />
                       </a>
                       <span>•</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-paper3 border border-rule font-mono text-ink2 uppercase">
+                        {mon.monitor_mode === 'video' ? 'Videos' : mon.monitor_mode === 'stream' ? 'Streams' : 'Stream & Video'}
+                      </span>
+                      <span>•</span>
                       <span>Layout: <strong className="text-ink2">{mon.layout || 'gaming'}</strong></span>
                       <span>•</span>
                       <span>Script: <strong className="text-ink2">{mon.subtitle_script || 'auto'}</strong></span>
+                      {mon.auto_post ? (
+                        <>
+                          <span>•</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono">
+                            Auto-Post ON
+                          </span>
+                        </>
+                      ) : null}
                       {mon.last_checked && (
                         <>
                           <span>•</span>
@@ -473,6 +569,24 @@ export default function LiveStreamTab({ onReopenProject }) {
                                       <p className="text-[10px] text-muted font-mono mb-2">
                                         Duration: {Math.round(clip.duration)}s
                                       </p>
+                                      {clip.published_posts && clip.published_posts.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mb-2">
+                                          {clip.published_posts.map((post, pIdx) => (
+                                            <a
+                                              key={pIdx}
+                                              href={post.url}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-medium rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+                                              title={`Posted to ${post.platform === 'youtube' ? 'YouTube Shorts' : 'Instagram Reels'}${post.account_name ? ` (${post.account_name})` : ''}`}
+                                            >
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                                              <span>Posted ({post.platform === 'youtube' ? 'YouTube' : 'Instagram'})</span>
+                                              <ExternalLink size={10} />
+                                            </a>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="flex items-center justify-between gap-2 pt-2 border-t border-rule/50">
                                       <button

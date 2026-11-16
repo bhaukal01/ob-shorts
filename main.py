@@ -2634,17 +2634,20 @@ class YouTubeUploadRequest(BaseModel):
     description: Optional[str] = None
     tags: Optional[List[str]] = None
     privacy_status: Optional[str] = "public"
+    account_id: Optional[int] = None
 
 
 class InstagramCredentialsRequest(BaseModel):
     ig_user_id: str
     access_token: str
+    account_name: Optional[str] = None
 
 
 class InstagramUploadRequest(BaseModel):
     job_id: str
     clip_index: int
     caption: Optional[str] = None
+    account_id: Optional[int] = None
 
 
 def _find_clip_file(job_id: str, clip_index: int) -> Tuple[str, str, Dict[str, Any]]:
@@ -2722,6 +2725,10 @@ async def get_settings_endpoint():
     s.pop("settings", None)
     s.pop("social", None)
 
+    yt_accounts = database.list_social_accounts("youtube")
+    ig_accounts = database.list_social_accounts("instagram")
+    all_accounts = database.list_social_accounts()
+
     return {
         **s,
         "settings": s,
@@ -2732,6 +2739,9 @@ async def get_settings_endpoint():
         "instagram_connected": ig_connected,
         "instagram_account_name": ig.get("account_name", ""),
         "instagram_user_id": ig.get("account_id", ""),
+        "youtube_accounts": yt_accounts,
+        "instagram_accounts": ig_accounts,
+        "social_accounts": all_accounts,
     }
 
 
@@ -2924,6 +2934,17 @@ async def youtube_oauth_callback(
         return RedirectResponse(url=f"{fe_clean}/#settings?youtube_error={urllib.parse.quote(str(e))}")
 
 
+@router.get("/api/publish/accounts")
+async def list_publish_accounts_endpoint():
+    return {"accounts": database.list_social_accounts()}
+
+
+@router.delete("/api/publish/accounts/{account_id}")
+async def delete_publish_account_endpoint(account_id: int):
+    ok = database.delete_social_account(account_id)
+    return {"status": "success" if ok else "not_found"}
+
+
 @router.post("/api/publish/youtube/upload")
 async def upload_youtube_shorts_endpoint(req: YouTubeUploadRequest):
     try:
@@ -2942,6 +2963,7 @@ async def upload_youtube_shorts_endpoint(req: YouTubeUploadRequest):
             description=desc,
             tags=req.tags,
             privacy_status=req.privacy_status or "public",
+            account_id=req.account_id,
         )
         database.add_publish_log(
             job_id=req.job_id,
@@ -2950,6 +2972,33 @@ async def upload_youtube_shorts_endpoint(req: YouTubeUploadRequest):
             status="success",
             remote_url=result.get("remote_url"),
         )
+        # Record into metadata published_posts
+        try:
+            output_base = os.environ.get("OUTPUT_DIR", "output")
+            job_dir = os.path.join(output_base, req.job_id)
+            meta_files = [f for f in os.listdir(job_dir) if f.endswith("_metadata.json")]
+            if meta_files:
+                meta_p = os.path.join(job_dir, meta_files[0])
+                with open(meta_p, "r", encoding="utf-8") as f:
+                    mdata = json.load(f)
+                shorts = mdata.get("shorts", [])
+                if req.clip_index < len(shorts):
+                    posts = list(shorts[req.clip_index].get("published_posts") or [])
+                    posts.append({
+                        "platform": "youtube",
+                        "url": result.get("remote_url"),
+                        "video_id": result.get("video_id"),
+                        "account_id": result.get("account_id"),
+                        "account_name": result.get("account_name"),
+                        "status": "success",
+                        "posted_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    })
+                    shorts[req.clip_index]["published_posts"] = posts
+                    with open(meta_p, "w", encoding="utf-8") as f:
+                        json.dump(mdata, f, indent=2)
+        except Exception as e:
+            print(f"[upload_youtube_shorts] Warning writing published_posts: {e}")
+
         return {"status": "success", "remote_url": result.get("remote_url"), "video_id": result.get("video_id")}
     except Exception as e:
         database.add_publish_log(
@@ -2965,8 +3014,17 @@ async def upload_youtube_shorts_endpoint(req: YouTubeUploadRequest):
 @router.post("/api/publish/instagram/credentials")
 async def save_instagram_credentials(req: InstagramCredentialsRequest):
     try:
-        res = await publishers.verify_and_save_instagram_credentials(req.ig_user_id, req.access_token)
-        return {"status": "verified", "account_id": res["account_id"], "username": res["username"]}
+        res = await publishers.verify_and_save_instagram_credentials(
+            ig_user_id=req.ig_user_id,
+            access_token=req.access_token,
+            account_name=req.account_name,
+        )
+        return {
+            "status": "verified",
+            "id": res.get("id"),
+            "account_id": res["account_id"],
+            "username": res["username"],
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3004,6 +3062,7 @@ async def upload_instagram_reels_endpoint(req: InstagramUploadRequest, request: 
         result = await publishers.upload_instagram_reels(
             signed_video_url=signed_url,
             caption=caption,
+            account_id=req.account_id,
         )
         database.add_publish_log(
             job_id=req.job_id,
@@ -3012,6 +3071,33 @@ async def upload_instagram_reels_endpoint(req: InstagramUploadRequest, request: 
             status="success",
             remote_url=result.get("remote_url"),
         )
+        # Record into metadata published_posts
+        try:
+            output_base = os.environ.get("OUTPUT_DIR", "output")
+            job_dir = os.path.join(output_base, req.job_id)
+            meta_files = [f for f in os.listdir(job_dir) if f.endswith("_metadata.json")]
+            if meta_files:
+                meta_p = os.path.join(job_dir, meta_files[0])
+                with open(meta_p, "r", encoding="utf-8") as f:
+                    mdata = json.load(f)
+                shorts = mdata.get("shorts", [])
+                if req.clip_index < len(shorts):
+                    posts = list(shorts[req.clip_index].get("published_posts") or [])
+                    posts.append({
+                        "platform": "instagram",
+                        "url": result.get("remote_url"),
+                        "media_id": result.get("media_id"),
+                        "account_id": result.get("account_id"),
+                        "account_name": result.get("account_name"),
+                        "status": "success",
+                        "posted_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    })
+                    shorts[req.clip_index]["published_posts"] = posts
+                    with open(meta_p, "w", encoding="utf-8") as f:
+                        json.dump(mdata, f, indent=2)
+        except Exception as e:
+            print(f"[upload_instagram_reels] Warning writing published_posts: {e}")
+
         return {"status": "success", "remote_url": result.get("remote_url"), "media_id": result.get("media_id")}
     except Exception as e:
         database.add_publish_log(
@@ -3036,6 +3122,21 @@ class AddMonitorRequest(BaseModel):
     layout: Optional[str] = "gaming"
     auto_clip: Optional[int] = 1
     subtitle_script: Optional[str] = "auto"
+    monitor_mode: Optional[str] = "stream"
+    target_youtube_account_id: Optional[int] = None
+    target_instagram_account_id: Optional[int] = None
+    auto_post: Optional[int] = 0
+
+
+class UpdateMonitorRequest(BaseModel):
+    channel_name: Optional[str] = None
+    layout: Optional[str] = None
+    auto_clip: Optional[int] = None
+    subtitle_script: Optional[str] = None
+    monitor_mode: Optional[str] = None
+    target_youtube_account_id: Optional[int] = None
+    target_instagram_account_id: Optional[int] = None
+    auto_post: Optional[int] = None
 
 
 @router.get("/api/live/monitors")
@@ -3056,8 +3157,29 @@ async def add_live_monitor_endpoint(req: AddMonitorRequest):
         layout=req.layout or "gaming",
         auto_clip=req.auto_clip if req.auto_clip is not None else 1,
         subtitle_script=req.subtitle_script or "auto",
+        monitor_mode=req.monitor_mode or "stream",
+        target_youtube_account_id=req.target_youtube_account_id,
+        target_instagram_account_id=req.target_instagram_account_id,
+        auto_post=req.auto_post or 0,
     )
     return {"status": "success", "id": monitor_id, "channel_url": normalized_url, "platform": platform}
+
+
+@router.put("/api/live/monitors/{monitor_id}")
+async def update_live_monitor_endpoint(monitor_id: int, req: UpdateMonitorRequest):
+    mon = database.get_live_monitor(monitor_id)
+    if not mon:
+        raise HTTPException(status_code=404, detail="Monitor not found")
+    database.update_live_monitor(
+        monitor_id=monitor_id,
+        channel_name=req.channel_name,
+        auto_clip=req.auto_clip,
+        monitor_mode=req.monitor_mode,
+        target_youtube_account_id=req.target_youtube_account_id,
+        target_instagram_account_id=req.target_instagram_account_id,
+        auto_post=req.auto_post,
+    )
+    return {"status": "success", "monitor": database.get_live_monitor(monitor_id)}
 
 
 @router.delete("/api/live/monitors/{monitor_id}")
@@ -3073,6 +3195,7 @@ async def toggle_live_monitor_endpoint(monitor_id: int):
         raise HTTPException(status_code=404, detail="Monitor not found")
     new_auto_clip = 0 if mon.get("auto_clip", 1) else 1
     database.update_live_monitor(monitor_id, auto_clip=new_auto_clip)
+    return {"status": "success", "auto_clip": new_auto_clip}
     return {"status": "success", "auto_clip": new_auto_clip}
 
 
@@ -3333,6 +3456,7 @@ async def get_project_clips_endpoint(job_id: str):
             "download_url": download_url,
             "created_at": created_iso,
             "duration": duration,
+            "published_posts": clip.get("published_posts") or [],
         })
 
     return {

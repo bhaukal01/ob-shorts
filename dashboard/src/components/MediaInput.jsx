@@ -30,7 +30,7 @@ const readVideoDuration = (file) => new Promise((resolve) => {
     } catch { resolve(null); }
 });
 
-export default function MediaInput({ onProcess, isProcessing }) {
+export default function MediaInput({ onProcess, isProcessing, youtubeAccounts = [], instagramAccounts = [] }) {
     const [youtubeUrlEnabled, setYoutubeUrlEnabled] = useState(true);
     // File upload is the primary path; the link is secondary.
     const [mode, setMode] = useState('file'); // 'file' | 'url'
@@ -70,6 +70,9 @@ export default function MediaInput({ onProcess, isProcessing }) {
     const [metadataScript, setMetadataScript] = useState(() => {
         try { return localStorage.getItem('os_metadata_script') || 'auto'; } catch { return 'auto'; }
     });
+    const [postYoutubeAccountId, setPostYoutubeAccountId] = useState('');
+    const [postInstagramAccountId, setPostInstagramAccountId] = useState('');
+    const [autoPost, setAutoPost] = useState(false);
     const infoRef = useRef(null);
 
     // Close the compatibility popover on any outside click.
@@ -137,6 +140,9 @@ export default function MediaInput({ onProcess, isProcessing }) {
             metadataScript,
             sourceStart: range ? Math.round(range.start) : null,
             sourceEnd: range ? Math.round(range.end) : null,
+            postYoutubeAccountId: postYoutubeAccountId ? Number(postYoutubeAccountId) : null,
+            postInstagramAccountId: postInstagramAccountId ? Number(postInstagramAccountId) : null,
+            autoPost: autoPost || Boolean(postYoutubeAccountId || postInstagramAccountId),
         };
         try {
             localStorage.setItem('os_auto_hook', autoHook ? '1' : '0');
@@ -435,6 +441,55 @@ export default function MediaInput({ onProcess, isProcessing }) {
                                     <p className="w-full text-[11px] leading-relaxed text-muted">
                                         You can change each clip&apos;s hook text, style, position and size
                                         afterwards with its hook button.
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Auto-Post Social Channels */}
+                            <div className="col-span-1 sm:col-span-3 pt-3 border-t border-rule space-y-2">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <span className="text-xs font-medium text-ink2 uppercase tracking-wider">
+                                        ⚡ Auto-Post Generated Clips
+                                    </span>
+                                    <span className="text-[11px] text-muted">
+                                        Automatically publishes clips in sequence
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                        <label className="text-[11px] text-muted block mb-1">Target YouTube Channel</label>
+                                        <select
+                                            value={postYoutubeAccountId}
+                                            onChange={(e) => setPostYoutubeAccountId(e.target.value)}
+                                            className="input-field text-xs py-1.5 w-full"
+                                        >
+                                            <option value="">None (Don&apos;t post to YouTube)</option>
+                                            {youtubeAccounts.map((acc) => (
+                                                <option key={acc.id} value={acc.id}>
+                                                    {acc.account_name || 'YouTube Channel'} ({acc.account_id || `ID: ${acc.id}`})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] text-muted block mb-1">Target Instagram Account</label>
+                                        <select
+                                            value={postInstagramAccountId}
+                                            onChange={(e) => setPostInstagramAccountId(e.target.value)}
+                                            className="input-field text-xs py-1.5 w-full"
+                                        >
+                                            <option value="">None (Don&apos;t post to Instagram)</option>
+                                            {instagramAccounts.map((acc) => (
+                                                <option key={acc.id} value={acc.id}>
+                                                    @{acc.account_name || 'Instagram'} ({acc.account_id || `ID: ${acc.id}`})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                                {youtubeAccounts.length === 0 && instagramAccounts.length === 0 && (
+                                    <p className="text-[10.5px] text-muted">
+                                        Tip: Connect YouTube or Instagram in <strong>Settings</strong> to enable 1-click auto-posting.
                                     </p>
                                 )}
                             </div>
