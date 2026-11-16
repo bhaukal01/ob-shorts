@@ -1,47 +1,58 @@
-/* ClipSnipr Brand Identity Design Tokens
- * Brand Toolkit Specification:
- * - Brand Primary: #FF5A1F (Vibrant International Orange)
- * - True Normal Blue: #0284C7 (Sky/Azure Blue - Far from purple)
- * - Status Green: #10B981 (Emerald Green for Connected/Active)
- * - Status Red: #EF4444 (Crimson Red for Live Recording/Alerts)
- * - Pure White & Clean Slate: #FFFFFF & #F5F6F8
- * - Typography: Inter (UI/Body) & JetBrains Mono (Technical/Timecodes)
+/* ClipSnipr Balanced 4-Color Studio Palette:
+ * - Electric Blue:  #0284C7 (True Azure Blue - Studio, Command, Controls)
+ * - Emerald Green:  #10B981 (Mint/Emerald - Audio Intelligence, Subtitles, Auto-Post, Success)
+ * - Crimson Red:    #EF4444 (Live Broadcast, Gaming Facecam, Recording Beacon, Snip Action)
+ * - Crisp White:    #FFFFFF (High-contrast typography, crisp surface cards, elevation)
+ * - Neutral Base:   #0B0F15 (Dark) / #F5F6F8 (Light) — pure marine obsidian, zero purple
  */
 
 :root {
-  /* Surface / Paper (Light Mode - Toolkit Surface #F5F6F8) */
-  --color-paper: #f5f6f8;        /* Toolkit Surface */
+  /* Surface / Paper (Light Mode) */
+  --color-paper: #f5f6f8;        /* Clean Neutral Canvas */
   --color-paper-2: #ffffff;      /* Pure Card White */
-  --color-paper-3: #eaedf2;      /* Surface Subtle */
+  --color-paper-3: #edf0f5;      /* Subsurface Panel */
   --color-paper-emit: rgba(2, 132, 199, 0.04);
 
-  /* Typography / Ink (Light Mode - Toolkit Text #111111) */
-  --color-ink: #111111;          /* Toolkit Brand Text */
-  --color-ink-2: #262626;        /* Neutral Dark */
-  --color-muted: #525252;        /* Neutral Muted */
+  /* Typography / Ink (Light Mode) */
+  --color-ink: #111111;          /* Pure Text Ink */
+  --color-ink-2: #262626;        /* Secondary Ink */
+  --color-muted: #525252;        /* Neutral Slate Muted */
 
   /* Borders / Dividers (Light Mode) */
   --color-rule: #e2e8f0;
   --color-rule-2: #cbd5e1;
   --rule-blueprint: rgba(17, 17, 17, 0.05);
 
-  /* Brand Accents */
-  --color-brand-orange: #ff5a1f; /* ClipSnipr Signature Orange */
-  --color-brand-blue: #0284c7;   /* True Normal Blue (Far from purple) */
-  --color-brand-green: #10b981;  /* Connected / Active Emerald */
-  --color-brand-red: #ef4444;    /* Live Stream / Alert Crimson */
-  --color-brand-white: #ffffff;  /* Pure White */
+  /* The 4 Core Colors */
+  --color-blue: #0284c7;         /* Normal Blue (Far from purple) */
+  --color-blue-hover: #0369a1;
+  --color-blue-bg: rgba(2, 132, 199, 0.10);
+  --color-blue-border: rgba(2, 132, 199, 0.35);
 
-  --color-accent: #0284c7;       /* Normal Blue as Primary Interactive */
-  --color-accent-ink: #ffffff;   /* Pure White Text */
-  --color-accent-2: #ff5a1f;     /* Orange Secondary Highlight */
-  --color-glow: rgba(2, 132, 199, 0.2);
-  --color-focus: #0284c7;
+  --color-green: #10b981;        /* Emerald / Mint Green */
+  --color-green-hover: #059669;
+  --color-green-bg: rgba(16, 185, 129, 0.10);
+  --color-green-border: rgba(16, 185, 129, 0.35);
 
-  /* Status Colors */
-  --color-ok: #10b981;          /* Emerald */
-  --color-danger: #ef4444;      /* Red */
-  --color-warn: #f59e0b;        /* Amber */
+  --color-red: #ef4444;          /* Crimson / Live Red */
+  --color-red-hover: #dc2626;
+  --color-red-bg: rgba(239, 68, 68, 0.10);
+  --color-red-border: rgba(239, 68, 68, 0.35);
+
+  --color-white: #ffffff;        /* Pure White */
+  --color-white-bg: rgba(255, 255, 255, 0.7);
+  --color-white-border: rgba(226, 232, 240, 0.8);
+
+  /* Aliases */
+  --color-brand-blue: var(--color-blue);
+  --color-brand-green: var(--color-green);
+  --color-brand-red: var(--color-red);
+  --color-brand-white: var(--color-white);
+  --color-accent: var(--color-blue);
+  --color-accent-ink: #ffffff;
+  --color-ok: var(--color-green);
+  --color-danger: var(--color-red);
+  --color-warn: #f59e0b;
 
   /* Typography */
   --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -52,7 +63,7 @@
   --tracking-micro: 0.06em;
 
   /* Geometry */
-  --radius-card: 10px;
+  --radius-card: 12px;
   --radius-input: 8px;
 
   /* Motion */
@@ -62,37 +73,50 @@
 
 /* Dark Theme Variables */
 .dark {
-  /* Surface / Paper (Dark Mode - Pure Neutral Slate, zero purple) */
-  --color-paper: #0b0f15;        /* Deep Obsidian Marine Slate */
-  --color-paper-2: #121824;      /* Card Marine Slate */
-  --color-paper-3: #182232;      /* Panel Marine Slate */
+  /* Surface / Paper (Dark Mode) */
+  --color-paper: #0b0f15;        /* Deep Obsidian Canvas (zero purple) */
+  --color-paper-2: #121824;      /* High-Contrast Card Slate */
+  --color-paper-3: #182232;      /* Subsurface Panel */
   --color-paper-emit: rgba(2, 132, 199, 0.06);
 
   /* Typography / Ink (Dark Mode) */
-  --color-ink: #ffffff;          /* Pure White Text */
+  --color-ink: #ffffff;          /* Pure Crisp White Text */
   --color-ink-2: #e2e8f0;        /* Light Slate */
-  --color-muted: #94a3b8;        /* Cool Slate Muted */
+  --color-muted: #94a3b8;        /* Slate Muted */
 
   /* Borders / Dividers (Dark Mode) */
   --color-rule: #222f44;
   --color-rule-2: #2d3e58;
   --rule-blueprint: rgba(255, 255, 255, 0.05);
 
-  /* Brand Accents */
-  --color-brand-orange: #ff5a1f; /* ClipSnipr Signature Orange */
-  --color-brand-blue: #0284c7;   /* True Normal Blue */
-  --color-brand-green: #10b981;  /* Emerald */
-  --color-brand-red: #ef4444;    /* Crimson */
-  --color-brand-white: #ffffff;  /* Pure White */
+  /* The 4 Core Colors */
+  --color-blue: #38bdf8;         /* Vibrant Electric Blue */
+  --color-blue-hover: #0ea5e9;
+  --color-blue-bg: rgba(56, 189, 248, 0.12);
+  --color-blue-border: rgba(56, 189, 248, 0.35);
 
-  --color-accent: #0284c7;       /* Normal Blue Primary */
+  --color-green: #10b981;        /* Vibrant Emerald / Mint */
+  --color-green-hover: #059669;
+  --color-green-bg: rgba(16, 185, 129, 0.14);
+  --color-green-border: rgba(16, 185, 129, 0.35);
+
+  --color-red: #ef4444;          /* Vibrant Crimson / Red */
+  --color-red-hover: #dc2626;
+  --color-red-bg: rgba(239, 68, 68, 0.14);
+  --color-red-border: rgba(239, 68, 68, 0.35);
+
+  --color-white: #ffffff;        /* Pure Crisp White */
+  --color-white-bg: rgba(255, 255, 255, 0.10);
+  --color-white-border: rgba(255, 255, 255, 0.20);
+
+  /* Aliases */
+  --color-brand-blue: var(--color-blue);
+  --color-brand-green: var(--color-green);
+  --color-brand-red: var(--color-red);
+  --color-brand-white: var(--color-white);
+  --color-accent: var(--color-blue);
   --color-accent-ink: #ffffff;
-  --color-accent-2: #ff5a1f;     /* Orange Highlight */
-  --color-glow: rgba(2, 132, 199, 0.3);
-  --color-focus: #0284c7;
-
-  /* Status Colors */
-  --color-ok: #10b981;
-  --color-danger: #ef4444;
+  --color-ok: var(--color-green);
+  --color-danger: var(--color-red);
   --color-warn: #f59e0b;
 }

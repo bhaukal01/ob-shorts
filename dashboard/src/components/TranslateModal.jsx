@@ -65,7 +65,7 @@ export default function TranslateModal({ isOpen, onClose, onTranslate, isProcess
                     <button
                         onClick={handleSubmit}
                         disabled={isProcessing || !hasApiKey}
-                        className="btn-primary flex-1"
+                        className="btn-green flex-1 font-bold text-white shadow-xs"
                     >
                         {isProcessing ? (
                             <>

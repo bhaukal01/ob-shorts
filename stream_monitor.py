@@ -322,7 +322,7 @@ def find_densest_speech_window(transcript: Dict[str, Any], window_duration: floa
 
 def analyze_segment_for_viral_moment(transcript: Dict[str, Any], live_title: str) -> Optional[Dict[str, Any]]:
     """Analyze a 10-minute segment transcript with LLM.
-    Returns None if segment has virtually no speech (e.g. AFK, silence).
+    Returns None only if segment is totally silent (e.g. streamer AFK, 0 speech).
     Returns dict(start, end, title, hook) for the best 30-60 second highlight.
     """
     if not transcript or not transcript.get("segments"):
@@ -334,8 +334,8 @@ def analyze_segment_for_viral_moment(transcript: Dict[str, Any], live_title: str
     if total_words == 0:
         total_words = sum(len(s.get("text", "").split()) for s in transcript.get("segments", []))
 
-    if total_words < 3:
-        _log(f"Segment has insufficient speech ({total_words} words). Skipping clipping.")
+    if total_words < 5:
+        _log(f"Segment has virtually no speech ({total_words} words). Skipping clipping.")
         return None
 
     transcript_lines = []
@@ -354,7 +354,7 @@ Guidelines:
 1. Every live gaming or chatting segment with active commentary has a peak highlight (e.g. an intense fight, a clutch play, a funny reaction, banter with chat, an epic fail, or storytelling). Find that peak highlight moment.
 2. Choose a tight 30 to 60 second window around that moment (start and end in seconds, between 0.0s and 600.0s).
 3. Set "viral": true, provide a catchy title (max 8 words), and a punchy 3-6 word hook text.
-4. Only set "viral": false if there is virtually NO speech (less than 15 words, streamer is completely AFK, or dead silence).
+4. CRITICAL: Always find the best highlight moment from this segment. Set "viral": true so a short can be published.
 """
 
     parsed = None
@@ -364,17 +364,56 @@ Guidelines:
             parsed_res, _ = llm_backend.generate_json(prompt, LiveSegmentHighlight)
             if isinstance(parsed_res, dict):
                 parsed = parsed_res
+                _log("Analyzed segment highlight using OpenAI-compatible backend.")
         except Exception as e:
             _log(f"OpenAI LLM highlight extraction notice: {e}")
 
-    # 2. Try Gemini if OpenAI server is not active or failed
+    # 2. Try Groq LLM if active / key configured
     if not parsed:
-        api_key = os.getenv("GEMINI_API_KEY")
+        groq_key = os.getenv("GROQ_API_KEY") or database.get_setting("groq_api_key")
+        if groq_key:
+            try:
+                import requests
+                headers = {
+                    "Authorization": f"Bearer {groq_key.strip()}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are an elite video editor identifying viral short-form clips from live streams. "
+                                "Respond strictly with JSON matching: {\"viral\": true, \"start\": float, \"end\": float, \"title\": str, \"hook\": str, \"reason\": str}."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.3,
+                }
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=30.0,
+                )
+                if resp.status_code == 200:
+                    c_text = resp.json()["choices"][0]["message"]["content"]
+                    parsed = json.loads(c_text)
+                    _log("Analyzed segment highlight using Groq Llama-3.3-70B.")
+            except Exception as e:
+                _log(f"Groq LLM highlight extraction notice: {e}")
+
+    # 3. Try Gemini if OpenAI/Groq was not active or failed
+    if not parsed:
+        api_key = os.getenv("GEMINI_API_KEY") or database.get_setting("gemini_api_key")
         if api_key:
             try:
                 from google import genai
                 from google.genai import types as genai_types
-                client = genai.Client(api_key=api_key)
+                client = genai.Client(api_key=api_key.strip())
                 model_name = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
                 config = genai_types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -383,23 +422,26 @@ Guidelines:
                 resp = client.models.generate_content(model=model_name, contents=prompt, config=config)
                 import gemini_worker
                 parsed = gemini_worker._parse_json_response_text(gemini_worker._get_response_text(resp))
+                _log("Analyzed segment highlight using Gemini.")
             except Exception as e:
                 _log(f"Gemini LLM highlight extraction notice: {e}")
 
-    # 3. If LLM provided a moment
+    # 4. If LLM provided a moment
     if parsed:
         is_viral = parsed.get("viral", True)
         if not is_viral:
-            # If the LLM deemed it not viral, but there is significant commentary (> 20 words),
+            # If the LLM deemed it not viral, but there is significant commentary (>= 20 words),
             # rescue the highlight by locating the densest speech window.
             if total_words < 20:
                 _log(f"Segment deemed not viral ({parsed.get('reason', 'Low activity')}) and has few words ({total_words}). Skipping.")
                 return None
-            _log(f"LLM marked viral=False but segment has {total_words} words. Extracting densest commentary window.")
+            _log(f"LLM marked viral=False but segment has high activity ({total_words} words). Rescuing highlight from densest commentary window.")
             d_start, d_end = find_densest_speech_window(transcript, 45.0)
+            start = max(0.0, min(d_start, 550.0))
+            end = min(600.0, max(start + 30.0, d_end))
             return {
-                "start": max(0.0, d_start),
-                "end": max(d_start + 30.0, d_end),
+                "start": start,
+                "end": end,
                 "title": f"{live_title} Highlight",
                 "hook": "Wait For It!",
             }
@@ -414,6 +456,11 @@ Guidelines:
         elif dur < 25.0:
             end = min(start + 35.0, end + 10.0)
 
+        # Ensure start and end are within bounds of a 10m segment (600s)
+        if start >= 570.0:
+            start = max(0.0, 600.0 - (end - start))
+            end = min(600.0, start + dur)
+
         return {
             "start": start,
             "end": end,
@@ -421,14 +468,16 @@ Guidelines:
             "hook": parsed.get("hook") or "Must Watch!",
         }
 
-    # 4. Fallback if both LLM endpoints failed/unavailable but transcript has speech
-    if total_words >= 15:
+    # 5. Guaranteed fallback: densest commentary window for any segment with speech
+    if total_words >= 5:
         _log(f"LLM unavailable; using word-density heuristic for {total_words} words.")
         d_start, d_end = find_densest_speech_window(transcript, 45.0)
+        start = max(0.0, min(d_start, 550.0))
+        end = min(600.0, max(start + 30.0, d_end))
         return {
-            "start": max(0.0, d_start),
-            "end": max(d_start + 30.0, d_end),
-            "title": f"{live_title} - Stream Highlight",
+            "start": start,
+            "end": end,
+            "title": f"{live_title} Highlight",
             "hook": "Watch This Moment!",
         }
 
@@ -512,15 +561,19 @@ def _render_single_stream_clip(
         clip_filename = f"{job_id}_clip_{clip_num}.mp4"
         raw_clip_path = os.path.join(out_dir, clip_filename)
 
-        _log(f"🔥 Cutting Clip #{clip_num} [{clip_start:.1f}s -> {clip_end:.1f}s]: {clip_title}")
-
         dur = clip_end - clip_start
+        _log(f"🔥 Cutting Clip #{clip_num} [{clip_start:.1f}s -> {clip_end:.1f}s]: {clip_title}")
+        _append_stream_log(
+            job_id,
+            f"✂️ {prefix}Step 1/4 - Cutting raw highlight #{clip_num} [{clip_start:.1f}s -> {clip_end:.1f}s] ({dur:.1f}s duration)..."
+        )
+
         cut_cmd = [
             "ffmpeg", "-y",
             "-ss", str(clip_start),
             "-i", seg_file,
             "-t", str(dur),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-tune", "fastdecode",
             "-c:a", "aac",
             raw_clip_path,
         ]
@@ -541,6 +594,7 @@ def _render_single_stream_clip(
             import main as _m
             if layout == "gaming":
                 os.environ["GAMING_LAYOUT"] = "1"
+            _append_stream_log(job_id, f"📐 {prefix}Step 2/4 - AI Reframing to 9:16 vertical ({layout} layout)...")
             rendered = _m.process_video_to_vertical(
                 raw_clip_path,
                 vertical_clip_path,
@@ -549,7 +603,7 @@ def _render_single_stream_clip(
             if rendered and os.path.exists(rendered) and os.path.getsize(rendered) > 0:
                 final_clip = rendered
         except Exception as e:
-            _log(f"Reframe to vertical failed ({e}), using raw clip.")
+            _append_stream_log(job_id, f"⚠️ {prefix}AI Reframing notice ({e}), preserved source framing.")
 
         # Generate compact Subtitles
         import subtitles as _subs
@@ -558,6 +612,7 @@ def _render_single_stream_clip(
 
         try:
             if transcript:
+                _append_stream_log(job_id, f"📝 {prefix}Step 3/4 - Burning word-by-word subtitles ({subtitle_script})...")
                 _subs.generate_ass(
                     transcript, clip_start, clip_end, ass_path,
                     fontsize=16, font_name="Anton" if subtitle_script != "hindi" else "Noto Sans Devanagari",
@@ -567,13 +622,14 @@ def _render_single_stream_clip(
                     if os.path.exists(sub_clip_path) and os.path.getsize(sub_clip_path) > 0:
                         final_clip = sub_clip_path
         except Exception as e:
-            _log(f"Burning subtitles failed: {e}")
+            _append_stream_log(job_id, f"⚠️ {prefix}Subtitle burn notice: {e}")
 
         # S3 auto-upload if enabled
         s3_url = None
         try:
             import s3_uploader
             if s3_uploader.is_s3_enabled():
+                _append_stream_log(job_id, f"☁️ {prefix}Step 4/4 - Uploading short to S3 storage...")
                 s3_uploader.upload_file_to_s3(final_clip, s3_key=f"{job_id}/{os.path.basename(final_clip)}")
                 s3_url = s3_uploader.get_presigned_stream_url_for_clip(job_id, os.path.basename(final_clip))
         except Exception as e:
@@ -602,7 +658,7 @@ def _render_single_stream_clip(
             if job_id in _STREAM_ACTIVE_JOBS:
                 _STREAM_ACTIVE_JOBS[job_id]["result"]["clips"] = existing_shorts
                 _STREAM_ACTIVE_JOBS[job_id]["ready_files"][os.path.basename(final_clip)] = new_short
-                _STREAM_ACTIVE_JOBS[job_id]["logs"].append(f"✨ Clip #{clip_num} published: {clip_title}")
+                _STREAM_ACTIVE_JOBS[job_id]["logs"].append(f"✨ {prefix}Clip #{clip_num} published: {clip_title}")
 
         try:
             app_mod = sys.modules.get("app")
@@ -611,11 +667,11 @@ def _render_single_stream_clip(
                 if "ready_files" not in app_mod.jobs[job_id]:
                     app_mod.jobs[job_id]["ready_files"] = {}
                 app_mod.jobs[job_id]["ready_files"][os.path.basename(final_clip)] = new_short
-                app_mod.jobs[job_id].setdefault("logs", []).append(f"✨ Clip #{clip_num} published: {clip_title}")
+                app_mod.jobs[job_id].setdefault("logs", []).append(f"✨ {prefix}Clip #{clip_num} published: {clip_title}")
         except Exception:
             pass
 
-        _append_stream_log(job_id, f"✅ Clip #{clip_num} published: {final_clip}")
+        _append_stream_log(job_id, f"✅ {prefix}Clip #{clip_num} ready ({os.path.basename(final_clip)})")
 
         # Trigger background auto-post if linked social accounts are configured
         try:
@@ -624,7 +680,7 @@ def _render_single_stream_clip(
             auto_p = bool(meta.get("auto_post", 0)) or bool(yt_acc or ig_acc)
             if auto_p and (yt_acc or ig_acc):
                 import auto_poster
-                _log(f"Auto-posting stream clip #{clip_num} to accounts (YT={yt_acc}, IG={ig_acc})...")
+                _append_stream_log(job_id, f"🚀 {prefix}Auto-posting Clip #{clip_num} to linked social accounts...")
                 auto_poster.trigger_background_auto_post(
                     job_id=job_id,
                     youtube_account_id=yt_acc,
@@ -657,10 +713,11 @@ def _stream_render_worker() -> None:
         moment = task.get("moment")
         transcript = task.get("transcript")
 
+        prefix = f"Segment #{seg_num}: "
         try:
             _append_stream_log(
                 job_id,
-                f"🎬 Starting render for Clip from Segment #{seg_num} ('{moment.get('title')}') [Sequential Worker Active]..."
+                f"🎬 {prefix}Sequential render worker started for '{moment.get('title')}' (Layout: {layout}, Subtitles: {subtitle_script})..."
             )
             final_clip = _render_single_stream_clip(
                 seg_file=seg_file,
@@ -675,14 +732,15 @@ def _stream_render_worker() -> None:
             if final_clip:
                 _append_stream_log(
                     job_id,
-                    f"🎉 Clip from Segment #{seg_num} rendered & published ({os.path.basename(final_clip)})."
+                    f"🎉 {prefix}Render & S3 publishing completed: {os.path.basename(final_clip)}"
                 )
         except Exception as e:
-            _append_stream_log(job_id, f"⚠️ Segment #{seg_num} render failed: {e}")
+            _append_stream_log(job_id, f"⚠️ {prefix}Render failed: {e}")
         finally:
             if seg_file and os.path.exists(seg_file):
                 try:
                     os.remove(seg_file)
+                    _append_stream_log(job_id, f"🧹 {prefix}Deleted raw 10-minute segment to free server disk space.")
                 except OSError:
                     pass
 
@@ -816,13 +874,14 @@ def _background_process_segment_task(
     prefix = f"Segment #{seg_num}: "
     try:
         from subtitles import transcribe_audio
-        _append_stream_log(job_id, f"🎙️ {prefix}Transcribing audio with Whisper...")
+        _append_stream_log(job_id, f"🎙️ {prefix}Transcribing 10m segment audio with Whisper...")
         transcript = transcribe_audio(seg_file)
         if not transcript or not transcript.get("segments"):
-            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no speech audio detected in this 10m window).")
+            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no speech audio detected in this 10m window — saving CPU & storage).")
             if os.path.exists(seg_file):
                 try:
                     os.remove(seg_file)
+                    _append_stream_log(job_id, f"🧹 {prefix}Deleted silent segment file.")
                 except OSError:
                     pass
             with _ACTIVE_LOCK:
@@ -830,24 +889,37 @@ def _background_process_segment_task(
             _check_and_finalize_stream(job_id)
             return
 
+        words_list = [w for s in transcript.get("segments", []) for w in s.get("words", [])]
+        word_count = len(words_list) or sum(len(s.get("text", "").split()) for s in transcript.get("segments", []))
+        _append_stream_log(
+            job_id,
+            f"🧠 {prefix}Transcribed {word_count} words. Analyzing viral pacing with LLM..."
+        )
+
         moment = analyze_segment_for_viral_moment(transcript, live_title)
         if not moment:
-            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no highlight moment in this 10m window).")
+            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no standout viral moments in this 10m window — saving CPU & storage).")
             if os.path.exists(seg_file):
                 try:
                     os.remove(seg_file)
+                    _append_stream_log(job_id, f"🧹 {prefix}Deleted low-activity segment file.")
                 except OSError:
                     pass
             with _ACTIVE_LOCK:
                 _JOB_PENDING_TASKS[job_id] = max(0, _JOB_PENDING_TASKS.get(job_id, 1) - 1)
             _check_and_finalize_stream(job_id)
             return
+
+        _append_stream_log(
+            job_id,
+            f"🔥 {prefix}Viral moment selected: '{moment['title']}' [{moment['start']:.1f}s -> {moment['end']:.1f}s] (Hook: \"{moment.get('hook', 'Must Watch!')}\")."
+        )
 
         if subtitle_script == "hinglish":
             try:
                 import hindi_transliterator
                 transcript = hindi_transliterator.transliterate_transcript(transcript)
-                _log("🔤 Transliterated live stream transcript to Hinglish")
+                _append_stream_log(job_id, f"🔤 {prefix}Transliterated transcript to Hinglish for subtitles.")
             except Exception as e:
                 _log(f"Hinglish transliteration notice: {e}")
 
@@ -865,7 +937,7 @@ def _background_process_segment_task(
         qsize = _STREAM_CLIP_RENDER_QUEUE.qsize()
         _append_stream_log(
             job_id,
-            f"📥 {prefix}Highlight '{moment['title']}' queued for sequential render (Queue position: #{qsize})."
+            f"⏳ {prefix}Enqueued for sequential rendering (Queue position: #{qsize})."
         )
     except Exception as e:
         _append_stream_log(job_id, f"⚠️ {prefix}Analysis error: {e}")
@@ -916,24 +988,18 @@ def _stream_capture_worker(
                 continue
 
             seg_file = os.path.join(seg_dir, f"seg_{seg_index}_{int(time.time())}.mp4")
-            _log(f"📥 [Monitor {mon_id}] Recording 10m segment #{seg_index + 1}...")
-
-            with _ACTIVE_LOCK:
-                if job_id in _STREAM_ACTIVE_JOBS:
-                    _STREAM_ACTIVE_JOBS[job_id]["logs"].append(
-                        f"📥 Recording 10-minute segment #{seg_index + 1}..."
-                    )
+            _append_stream_log(job_id, f"📥 Recording 10-minute segment #{seg_index + 1}...")
 
             recorded = record_stream_segment(manifest_urls, STREAM_SEGMENT_DURATION, seg_file)
 
             if recorded and os.path.exists(seg_file) and os.path.getsize(seg_file) > 100000:
-                _log(f"📦 [Monitor {mon_id}] Segment #{seg_index + 1} captured ({os.path.getsize(seg_file)} bytes). Dispatching to background processor...")
+                size_mb = os.path.getsize(seg_file) / (1024 * 1024)
                 with _ACTIVE_LOCK:
                     _JOB_PENDING_TASKS[job_id] = _JOB_PENDING_TASKS.get(job_id, 0) + 1
-                    if job_id in _STREAM_ACTIVE_JOBS:
-                        _STREAM_ACTIVE_JOBS[job_id]["logs"].append(
-                            f"⚙️ Segment #{seg_index + 1} captured. Analyzing for viral highlight in background..."
-                        )
+                _append_stream_log(
+                    job_id,
+                    f"⚙️ Segment #{seg_index + 1} captured ({size_mb:.1f} MB). Analyzing for viral highlight in background..."
+                )
 
                 # Dispatch to background processing pool immediately so next segment records concurrently!
                 _PROCESSING_EXECUTOR.submit(

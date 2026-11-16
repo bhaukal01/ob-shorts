@@ -14,20 +14,17 @@ import subprocess
 import threading
 import time
 
-# Quality tiers pinning the historical libx264 settings, optimized for CPU throughput.
-QUALITY = "quality"            # was: -preset medium -crf 18
-QUALITY_FAST = "quality_fast"  # was: -preset fast -crf 18
-DELIVERY = "delivery"          # was: -preset fast -crf 22
-# A file the pipeline decodes again straight away (the cut that every render
-# reads). Uses QUALITY_FAST settings so the intermediate slice is extracted
-# quickly on CPU with zero degradation to the final vertical reframe.
-INTERMEDIATE = "intermediate"
+# Quality tiers pinning settings optimized for high-throughput CPU execution.
+QUALITY = "quality"            # CPU short-form: -preset veryfast -crf 22
+QUALITY_FAST = "quality_fast"  # CPU short-form: -preset veryfast -crf 22
+DELIVERY = "delivery"          # Delivery: -preset veryfast -crf 22
+INTERMEDIATE = "intermediate"  # Intermediate slices: ultrafast crf 23
 
 _X264_ARGS = {
-    QUALITY: ["-c:v", "libx264", "-preset", os.environ.get("X264_PRESET", "medium"), "-crf", os.environ.get("X264_CRF", "18")],
-    QUALITY_FAST: ["-c:v", "libx264", "-preset", os.environ.get("X264_FAST_PRESET", "fast"), "-crf", os.environ.get("X264_CRF", "18")],
-    DELIVERY: ["-c:v", "libx264", "-preset", "fast", "-crf", "22"],
-    INTERMEDIATE: ["-c:v", "libx264", "-preset", os.environ.get("X264_FAST_PRESET", "fast"), "-crf", os.environ.get("X264_CRF", "18")],
+    QUALITY: ["-c:v", "libx264", "-preset", os.environ.get("X264_PRESET", "veryfast"), "-crf", os.environ.get("X264_CRF", "22")],
+    QUALITY_FAST: ["-c:v", "libx264", "-preset", os.environ.get("X264_FAST_PRESET", "veryfast"), "-crf", os.environ.get("X264_CRF", "22")],
+    DELIVERY: ["-c:v", "libx264", "-preset", "veryfast", "-crf", "22"],
+    INTERMEDIATE: ["-c:v", "libx264", "-preset", os.environ.get("X264_FAST_PRESET", "veryfast"), "-crf", os.environ.get("X264_CRF", "22")],
 }
 
 # NVENC -cq is not 1:1 with x264 CRF: benchmarked on the prod GPU (RTX 4000
@@ -140,6 +137,18 @@ def mark_ai_generated(path, detail=""):
             except OSError:
                 pass
         return False
+
+
+def cpu_thread_args():
+    """Return explicit thread budget parameters for CPU decoding and filtering.
+    Caps each FFmpeg process to avoid thread thrashing when multiple jobs run."""
+    try:
+        cores = os.cpu_count() or 4
+        max_jobs = int(os.environ.get("MAX_CONCURRENT_JOBS", "2") or 2)
+        threads = max(1, min(4, cores // max_jobs))
+    except Exception:
+        threads = 2
+    return ["-threads", str(threads), "-filter_threads", str(threads)]
 
 
 def audio_encode_args():
@@ -364,6 +373,7 @@ def cut_clip(input_video, clip_temp_path, start, end, clip_number):
     encode_args = video_encode_args(INTERMEDIATE)
     command = [
         'ffmpeg', '-y',
+        *cpu_thread_args(),
         '-ss', str(start),
         '-to', str(end),
         '-i', input_video,

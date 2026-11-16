@@ -204,7 +204,7 @@ export default function ReframeEditor({ jobId, clipIndex, clipTitle, onClose, on
                         <button
                             onClick={handleSave}
                             disabled={!adjusted || saving}
-                            className="btn-primary py-2 px-4 text-sm disabled:opacity-40"
+                            className="btn-blue py-2 px-4 text-sm font-bold text-white shadow-xs disabled:opacity-40"
                         >
                             {saving ? <Loader2 size={16} className="animate-spin" /> : null}
                             {saving ? 're-rendering…' : 'apply reframing'}

@@ -1084,7 +1084,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
 
                     <button
                         onClick={() => setShowModal(true)}
-                        className="btn-primary flex-col gap-1 py-2.5 sm:py-2 px-1 text-[11px] leading-none rounded-input whitespace-nowrap"
+                        className="btn-green flex-col gap-1 py-2.5 sm:py-2 px-1 text-[11px] leading-none rounded-input whitespace-nowrap text-white font-bold"
                     >
                         <Share2 size={16} className="shrink-0" /> post
                     </button>

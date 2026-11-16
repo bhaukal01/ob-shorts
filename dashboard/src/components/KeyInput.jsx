@@ -20,7 +20,7 @@ export default function KeyInput({ onKeySet, savedKey }) {
     return (
         <div className="card p-4 sm:p-6 mb-8 animate-fade">
             <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-paper3 rounded-input text-brass">
+                <div className="p-2 bg-paper3 rounded-input text-sky-400">
                     <Key size={18} />
                 </div>
                 <h2 className="font-display lowercase text-lg text-ink">Gemini API Key</h2>
@@ -48,7 +48,7 @@ export default function KeyInput({ onKeySet, savedKey }) {
                 <button
                     onClick={handleSave}
                     disabled={!key || isSaved}
-                    className={isSaved ? 'badge-ok px-4 cursor-default' : 'btn-primary'}
+                    className={isSaved ? 'badge-ok px-4 cursor-default' : 'btn-blue'}
                 >
                     {isSaved ? <><Check size={14} /> Ready</> : 'Set Key'}
                 </button>
@@ -60,7 +60,7 @@ export default function KeyInput({ onKeySet, savedKey }) {
                     href="https://aistudio.google.com/app/apikey"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-brass hover:underline mt-1 inline-block"
+                    className="text-sky-400 hover:underline mt-1 inline-block"
                 >
                     Get your free Gemini API Key here →
                 </a>

@@ -576,7 +576,7 @@ export default function SubtitleModal({ isOpen, onClose, onGenerate, onApplyAll,
                                         <button
                                             onClick={() => onGenerate(styleOptions)}
                                             disabled={isProcessing}
-                                            className="btn-primary flex-1"
+                                            className="btn-green flex-1 font-bold text-white shadow-xs"
                                         >
                                             {(isProcessing && !bulkRunning) && <Loader2 size={16} className="animate-spin text-brassink" />}
                                             {(isProcessing && !bulkRunning) ? 'generating...' : 'apply to this clip'}

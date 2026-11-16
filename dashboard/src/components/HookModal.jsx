@@ -319,7 +319,7 @@ export default function HookModal({ isOpen, onClose, onGenerate, onRemove, isPro
                                 });
                             }}
                             disabled={isProcessing || !text.trim()}
-                            className="btn-primary flex-1"
+                            className="btn-red flex-1 font-bold text-white shadow-xs"
                         >
                             {isProcessing && <Loader2 size={16} className="animate-spin text-brassink" />}
                             {isProcessing ? 'saving...' : (burnedHook ? 'update hook' : 'add hook')}

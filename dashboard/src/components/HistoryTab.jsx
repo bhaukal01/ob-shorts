@@ -127,16 +127,26 @@ export default function HistoryTab({ onReopenProject }) {
     <div className="h-full overflow-y-auto p-5 sm:p-8 max-w-5xl mx-auto animate-fade">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-rule">
         <div>
-          <p className="eyebrow mb-1">02 · LIBRARY / PROJECTS</p>
+          <p className="eyebrow mb-1 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            03 · LIBRARY / PROJECTS
+          </p>
           <h1 className="font-display lowercase text-2xl text-ink">Video Projects &amp; Jobs</h1>
         </div>
-        <button
-          onClick={loadProjects}
-          className="btn-ghost py-1.5 px-3 text-xs flex items-center gap-1.5"
-          title="Refresh projects list"
-        >
-          <Clock size={13} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {projectsList && (
+            <span className="tag-uniform tag-green text-[10px]">
+              {projectsList.length} Projects Total
+            </span>
+          )}
+          <button
+            onClick={loadProjects}
+            className="btn-ghost py-1.5 px-3 text-xs flex items-center gap-1.5"
+            title="Refresh projects list"
+          >
+            <Clock size={13} /> Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -207,7 +217,7 @@ export default function HistoryTab({ onReopenProject }) {
                   <button
                     onClick={() => handleReopen(proj.job_id, proj.status)}
                     disabled={!!reopening}
-                    className="btn-primary px-3 py-1.5 text-xs flex items-center gap-1.5 shadow-sm"
+                    className="btn-green px-3 py-1.5 text-xs flex items-center gap-1.5 font-bold text-white shadow-sm"
                     title="Return to the Generator workspace with live logs and progress"
                   >
                     {reopening === proj.job_id ? (
@@ -287,7 +297,7 @@ export default function HistoryTab({ onReopenProject }) {
                       <button
                         onClick={() => handleReopen(proj.job_id, 'completed')}
                         disabled={!!reopening}
-                        className="btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5"
+                        className="btn-green py-2 px-3.5 text-xs flex items-center gap-1.5 font-bold text-white shadow-xs hover:brightness-105"
                         title="Open full interactive project workspace with live preview, subtitle editing, and recut tools"
                       >
                         {reopening === proj.job_id ? (
@@ -303,7 +313,7 @@ export default function HistoryTab({ onReopenProject }) {
                         className={`btn-ghost py-2 px-3 text-xs flex items-center gap-1.5 border border-rule transition-colors ${isExpanded ? 'bg-paper3 text-ink font-medium' : ''}`}
                         title="View and stream generated clips directly from S3"
                       >
-                        <Film size={13} className="text-brass" />
+                        <Film size={13} className="text-sky-400" />
                         <span>Clip List</span>
                         {isLoadingClips ? (
                           <Loader2 size={12} className="animate-spin ml-0.5" />
@@ -318,7 +328,7 @@ export default function HistoryTab({ onReopenProject }) {
                       <button
                         onClick={() => handleDelete(proj.job_id, proj.title)}
                         disabled={deleting === proj.job_id}
-                        className="btn-ghost text-muted hover:text-danger hover:bg-danger/10 p-2 text-xs transition-colors rounded-input"
+                        className="btn-ghost text-muted hover:text-red-400 hover:bg-red-500/10 p-2 text-xs transition-colors rounded-input"
                         title="Delete project from library (with 24h grace period)"
                       >
                         {deleting === proj.job_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -331,7 +341,7 @@ export default function HistoryTab({ onReopenProject }) {
                     <div className="border-t border-rule bg-paper3/40 p-4 sm:p-5 animate-fade">
                       {isLoadingClips ? (
                         <div className="flex items-center justify-center py-8 text-muted gap-2 text-xs font-mono">
-                          <Loader2 size={14} className="animate-spin text-brass" />
+                          <Loader2 size={14} className="animate-spin text-sky-400" />
                           <span>Fetching S3 clip metadata…</span>
                         </div>
                       ) : clips.length === 0 ? (
@@ -339,7 +349,7 @@ export default function HistoryTab({ onReopenProject }) {
                       ) : (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between text-xs text-muted mb-2 font-mono">
-                            <span className="flex items-center gap-1.5 text-brass">
+                            <span className="flex items-center gap-1.5 text-sky-400">
                               <HardDrive size={12} /> S3 Direct Playback &amp; Bandwidth Offload Active
                             </span>
                             <span>{clips.length} {clips.length === 1 ? 'short' : 'shorts'}</span>
@@ -349,7 +359,7 @@ export default function HistoryTab({ onReopenProject }) {
                             {clips.map((clip) => (
                               <div
                                 key={clip.id}
-                                className="bg-paper border border-rule rounded-input p-3 hover:border-brass/50 transition-all flex flex-col justify-between group"
+                                className="bg-paper border border-rule rounded-input p-3 hover:border-sky-500/50 transition-all flex flex-col justify-between group"
                               >
                                 <div>
                                   <div className="flex items-center justify-between gap-1 mb-1">
@@ -371,7 +381,7 @@ export default function HistoryTab({ onReopenProject }) {
                                   {/* Play directly from S3 */}
                                   <button
                                     onClick={() => setActivePlayerClip(clip)}
-                                    className="btn-primary py-1 px-2.5 text-[11px] flex items-center gap-1 shrink-0"
+                                    className="btn-blue py-1 px-2.5 text-[11px] flex items-center gap-1 shrink-0 font-semibold"
                                     title="Play clip stream directly from S3 storage"
                                   >
                                     <Play size={11} /> Play (S3)
@@ -381,7 +391,7 @@ export default function HistoryTab({ onReopenProject }) {
                                   <a
                                     href={clip.download_url || clip.stream_url || clip.video_url}
                                     download={clip.filename || 'short.mp4'}
-                                    className="text-[11px] text-muted hover:text-brass flex items-center gap-1 font-mono transition-colors"
+                                    className="text-[11px] text-muted hover:text-red-400 flex items-center gap-1 font-mono transition-colors"
                                     title="Direct presigned S3 download"
                                   >
                                     <Download size={12} /> Download
@@ -418,7 +428,7 @@ export default function HistoryTab({ onReopenProject }) {
                   {activePlayerClip.title}
                 </p>
                 <p className="text-[10px] font-mono text-muted flex items-center gap-1">
-                  <HardDrive size={10} className="text-brass" /> Streaming via S3
+                  <HardDrive size={10} className="text-sky-400" /> Streaming via S3
                 </p>
               </div>
               <button
@@ -448,7 +458,7 @@ export default function HistoryTab({ onReopenProject }) {
               <a
                 href={activePlayerClip.download_url || activePlayerClip.stream_url || activePlayerClip.video_url}
                 download={activePlayerClip.filename || 'short.mp4'}
-                className="btn-primary py-1 px-3 text-xs flex items-center gap-1.5"
+                className="btn-red py-1 px-3 text-xs flex items-center gap-1.5 font-bold text-white shadow-xs"
               >
                 <Download size={13} /> Download
               </a>

@@ -1208,7 +1208,7 @@ export default function ClipEditor({ jobId, clipIndex, clipTitle, onClose, onRer
                                     onClick={() => sendToClip('replace')}
                                     disabled={!markRange}
                                     title="the selected segment becomes this range (.)"
-                                    className="btn-primary text-[11px] py-1.5 px-2 disabled:opacity-40"
+                                    className="btn-green text-[11px] py-1.5 px-2.5 font-bold text-white shadow-xs disabled:opacity-40"
                                 >
                                     replace #{selected + 1}
                                 </button>
@@ -1555,7 +1555,7 @@ export default function ClipEditor({ jobId, clipIndex, clipTitle, onClose, onRer
                             >
                                 {rendering ? 'close' : dirty ? 'cancel' : 'close'}
                             </button>
-                            <button className="btn-primary flex-1 flex items-center justify-center gap-2" disabled={!canRender || !dirty} onClick={doRender}>
+                            <button className="btn-red flex-1 flex items-center justify-center gap-2 font-bold text-white shadow-md hover:brightness-105" disabled={!canRender || !dirty} onClick={doRender}>
                                 {rendering
                                     ? (<><Loader2 size={16} className="animate-spin text-brassink" /> re-rendering… {renderSeconds}s</>)
                                     : (needsSourcePath ? 're-render from source' : 're-render clip')}

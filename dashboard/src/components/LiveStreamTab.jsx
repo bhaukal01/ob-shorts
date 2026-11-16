@@ -172,9 +172,9 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
       </div>
 
       {/* Add New Stream Form */}
-      <div className="card p-6">
+      <div className="card p-6 border-l-4 border-l-red-500">
         <h3 className="text-sm font-semibold text-ink uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Plus size={16} /> Track New Creator Channel
+          <Plus size={16} className="text-red-500" /> Track New Creator Channel
         </h3>
         <form onSubmit={handleAddMonitor} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -310,10 +310,10 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
             <button
               type="submit"
               disabled={adding || !channelUrl.trim()}
-              className="btn-primary !bg-red-600 hover:!bg-red-700 flex items-center gap-2"
+              className="btn-red px-6 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-md hover:brightness-110"
             >
-              {adding ? <Loader2 size={16} className="animate-spin" /> : <Radio size={16} />}
-              Start Tracking Stream
+              {adding ? <Loader2 size={16} className="animate-spin text-white" /> : <Radio size={16} className="text-white" />}
+              <span className="text-white">Start Tracking Stream</span>
             </button>
           </div>
         </form>
@@ -403,18 +403,18 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                     {/* View Creator Streams Button */}
                     <button
                       onClick={() => openCreatorStreams(mon)}
-                      className="text-xs px-3 py-1.5 rounded font-medium border border-rule hover:border-rule2 hover:text-ink text-muted flex items-center gap-1.5 transition-colors bg-surface"
+                      className="text-xs px-3 py-1.5 rounded font-semibold border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 flex items-center gap-1.5 transition-colors"
                       title="View streams and generated clips from this creator"
                     >
-                      <Film size={13} className="text-brass" />
-                      <span>Streams</span>
+                      <Film size={13} className="text-sky-400" />
+                      <span>Streams &amp; Clips</span>
                     </button>
 
                     <button
                       onClick={() => handleToggle(mon.id)}
-                      className={`text-xs px-3 py-1.5 rounded font-medium border transition-colors ${
+                      className={`text-xs px-3 py-1.5 rounded font-semibold border transition-colors ${
                         mon.auto_clip
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                          ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
                           : 'bg-muted/10 border-rule text-muted'
                       }`}
                     >
@@ -445,7 +445,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-rule flex items-center justify-between bg-paper2 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-md bg-brass/10 text-brass">
+                <div className="p-2 rounded-md bg-sky-500/15 text-sky-400">
                   <Film size={18} />
                 </div>
                 <div>
@@ -469,7 +469,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar space-y-4">
               {loadingStreams ? (
                 <div className="py-16 flex flex-col items-center justify-center gap-2 text-muted">
-                  <Loader2 size={24} className="animate-spin text-brass" />
+                  <Loader2 size={24} className="animate-spin text-sky-400" />
                   <span className="text-xs font-mono">Fetching creator streams…</span>
                 </div>
               ) : creatorStreams.length === 0 ? (
@@ -488,7 +488,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                     <div
                       key={st.job_id}
                       className={`border rounded-lg overflow-hidden transition-all ${
-                        isExp ? 'border-brass/50 bg-paper2/50' : 'border-rule bg-paper hover:border-rule2'
+                        isExp ? 'border-sky-500/50 bg-paper2/50' : 'border-rule bg-paper hover:border-rule2'
                       }`}
                     >
                       {/* Stream Item Header */}
@@ -504,11 +504,11 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                                 Live Now
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-muted/20 text-muted font-medium shrink-0">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-emerald-500/15 text-emerald-400 font-semibold shrink-0">
                                 Completed
                               </span>
                             )}
-                            <span className="text-[10px] font-mono px-2 py-0.5 bg-paper3 border border-rule rounded text-muted">
+                            <span className="text-[10px] font-mono px-2 py-0.5 bg-paper3 border border-rule rounded text-ink2">
                               {st.clip_count} {st.clip_count === 1 ? 'clip' : 'clips'}
                             </span>
                           </div>
@@ -524,7 +524,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                                 setSelectedCreator(null);
                                 onReopenProject(st.job_id, st.status);
                               }}
-                              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                              className="btn-green py-1.5 px-3 text-xs flex items-center gap-1.5 text-white font-bold shadow-xs hover:brightness-105"
                               title="Open stream in Generator workspace"
                             >
                               <FolderOpen size={13} /> Open Project
@@ -550,7 +550,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                           ) : (
                             <div className="space-y-3">
                               <div className="flex items-center justify-between text-xs text-muted font-mono">
-                                <span className="flex items-center gap-1.5 text-brass">
+                                <span className="flex items-center gap-1.5 text-sky-400">
                                   <HardDrive size={12} /> S3 Direct Playback
                                 </span>
                                 <span>{st.clips.length} shorts</span>
@@ -560,7 +560,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                                 {st.clips.map((clip) => (
                                   <div
                                     key={clip.index}
-                                    className="p-3 bg-paper border border-rule rounded-input flex flex-col justify-between hover:border-brass/40 transition-colors"
+                                    className="p-3 bg-paper border border-rule rounded-input flex flex-col justify-between hover:border-sky-500/40 transition-colors"
                                   >
                                     <div>
                                       <p className="text-xs font-semibold text-ink line-clamp-2 mb-1" title={clip.title}>
@@ -591,7 +591,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                                     <div className="flex items-center justify-between gap-2 pt-2 border-t border-rule/50">
                                       <button
                                         onClick={() => setActivePlayerClip(clip)}
-                                        className="btn-ghost py-1 px-2.5 text-[11px] text-brass hover:text-ink flex items-center gap-1 font-mono"
+                                        className="btn-ghost py-1 px-2.5 text-[11px] text-sky-400 hover:text-ink flex items-center gap-1 font-mono"
                                       >
                                         <Play size={11} /> Play Short
                                       </button>
@@ -600,7 +600,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                                         download
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="p-1 text-muted hover:text-ink rounded"
+                                        className="p-1 text-muted hover:text-red-400 rounded transition-colors"
                                         title="Download Short"
                                       >
                                         <Download size={13} />
@@ -634,7 +634,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono text-muted flex items-center gap-1.5">
-                <HardDrive size={12} className="text-brass" /> Direct Stream
+                <HardDrive size={12} className="text-sky-400" /> Direct Stream
               </span>
               <button
                 onClick={() => setActivePlayerClip(null)}
@@ -666,7 +666,7 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
                 download
                 target="_blank"
                 rel="noreferrer"
-                className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                className="btn-red py-1.5 px-3 text-xs flex items-center gap-1.5 text-white font-bold shadow-xs hover:brightness-105"
               >
                 <Download size={13} /> Download Video
               </a>

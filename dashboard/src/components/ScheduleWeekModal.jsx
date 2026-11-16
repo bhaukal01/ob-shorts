@@ -187,7 +187,7 @@ export default function ScheduleWeekModal({ isOpen, onClose, clips, jobId, uploa
                 <button
                     onClick={handleScheduleAll}
                     disabled={scheduling || !canPost || selectedPlatforms.length === 0}
-                    className="btn-primary flex-1"
+                    className="btn-green flex-1 font-bold text-white shadow-xs"
                 >
                     {scheduling ? (
                         <>

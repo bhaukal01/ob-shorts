@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -29,11 +30,11 @@ def _clean_encoder_state(monkeypatch):
 
 def test_default_args_pin_historical_x264_settings():
     assert video_encode_args(QUALITY) == [
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18"]
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22"]
     assert video_encode_args(QUALITY_FAST) == [
-        "-c:v", "libx264", "-preset", "fast", "-crf", "18"]
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22"]
     assert video_encode_args(DELIVERY) == [
-        "-c:v", "libx264", "-preset", "fast", "-crf", "22"]
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22"]
 
 
 def test_unknown_tier_raises():
@@ -295,6 +296,7 @@ def _wrapped(tmp_path, threads, *args):
     return out.splitlines()
 
 
+@pytest.mark.skipif(not shutil.which("sh"), reason="Requires POSIX shell")
 def test_wrapper_caps_decoder_and_filter_threads(tmp_path):
     argv = _wrapped(tmp_path, "3", "-y", "-ss", "1", "-i", "a b.mp4", "-i", "logo.png",
                     "-filter_complex", "[0:v][1:v]overlay", "-c:v", "h264_nvenc",
@@ -306,6 +308,7 @@ def test_wrapper_caps_decoder_and_filter_threads(tmp_path):
                     "-threads", "8", "out.mp4"]
 
 
+@pytest.mark.skipif(not shutil.which("sh"), reason="Requires POSIX shell")
 def test_wrapper_keeps_what_the_caller_set(tmp_path):
     argv = _wrapped(tmp_path, "2", "-threads", "5", "-i", "a.mp4",
                     "-filter_threads", "1", "-i", "b.mp4", "out.mp4")
@@ -313,6 +316,7 @@ def test_wrapper_keeps_what_the_caller_set(tmp_path):
                     "-filter_threads", "1", "-threads", "2", "-i", "b.mp4", "out.mp4"]
 
 
+@pytest.mark.skipif(not shutil.which("sh"), reason="Requires POSIX shell")
 @pytest.mark.parametrize("threads", [None, "", "0", "auto"])
 def test_wrapper_is_a_passthrough_when_unset(tmp_path, threads):
     assert _wrapped(tmp_path, threads, "-i", "a.mp4", "x y.mp4") == ["-i", "a.mp4", "x y.mp4"]

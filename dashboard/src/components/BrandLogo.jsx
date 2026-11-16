@@ -2,10 +2,9 @@ import React from 'react';
 
 /**
  * Official ClipSnipr Brand Mark & Wordmark
- * Derived from ClipSnipr Brand Identity Toolkit:
- * - 4-corner crop/clip frame brackets
- * - Top-right bracket in signature #FF5A1F orange
- * - Top-left, bottom-left, bottom-right brackets in text-ink / white
+ * 4-Corner crop/clip frame brackets:
+ * - Top-right cutting bracket in signature Crimson Red (#ef4444)
+ * - Frame brackets in text-ink / crisp white
  */
 export function BrandIcon({ size = 28, className = '' }) {
   return (
@@ -24,10 +23,10 @@ export function BrandIcon({ size = 28, className = '' }) {
         strokeWidth="3.5"
         strokeLinecap="round"
       />
-      {/* Top-Right Bracket (Signature Brand Accent #FF5A1F) */}
+      {/* Top-Right Cutting Bracket (Crimson Red #ef4444) */}
       <path
         d="M22 10H27C28.6569 10 30 11.3431 30 13V18"
-        stroke="#FF5A1F"
+        stroke="#ef4444"
         strokeWidth="3.5"
         strokeLinecap="round"
       />

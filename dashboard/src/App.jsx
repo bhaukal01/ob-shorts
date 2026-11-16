@@ -2,12 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
-import McpConnectCard from './components/McpConnectCard';
 import ResultCard from './components/ResultCard';
 import ProcessingAnimation from './components/ProcessingAnimation';
 import SegmentedControl from './components/ui/SegmentedControl';
 import { getApiUrl } from './config';
-import AdvancedBanner from './components/AdvancedBanner';
 import ProfileMenu from './components/ProfileMenu';
 import Modal from './components/ui/Modal';
 import { useAuth } from './contexts/AuthContext';
@@ -265,13 +263,7 @@ function App() {
   // Cloud auth/billing session (inert when billing is disabled).
   const { billingEnabled, isManaged, isSignedIn, me, plan, refreshMe, jobRetentionSeconds, localLlm, loading: authLoading } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
-  const [showTopUp, setShowTopUp] = useState(false);
-  // Free plan: "want the watermark off?" once per job, when the clips land.
-  const [showWmNotice, setShowWmNotice] = useState(false);
-  const wmNoticedJobRef = useRef(null);
-  const [showPlanChoice, setShowPlanChoice] = useState(false);
   const [tutorialPhase, setTutorialPhase] = useState(null); // null | intro | coach | celebrate
-  const [showTrialUpgrade, setShowTrialUpgrade] = useState(false);
   const [topUpInfo, setTopUpInfo] = useState({});
   // {processed_minutes, total_minutes} when the running/finished job clips
   // only the first part of the source (the quota wall's free offer).
@@ -600,47 +592,6 @@ function App() {
     window.addEventListener(QUOTA_WALL_EVENT, onWall);
     return () => window.removeEventListener(QUOTA_WALL_EVENT, onWall);
   }, [isManaged, meStatus, refreshMe]);
-
-  // The clips just landed on a free account: ask once, per job, whether they
-  // want the mark off. A beat after the grid renders, so the first thing they
-  // see is their clips and not a modal over them.
-  useEffect(() => {
-    if (status !== 'complete' || plan !== 'free' || !isManaged || !jobId) return;
-    if (!(results?.clips?.length > 0)) return;
-    // Not on top of the tutorial's celebrate step: it shows once that closes.
-    if (tutorialPhase === 'coach' || tutorialPhase === 'celebrate') return;
-    if (wmNoticedJobRef.current === jobId || watermarkNoticeDismissed(jobId)) return;
-    wmNoticedJobRef.current = jobId;
-    const t = setTimeout(() => { if (jobIdRef.current === jobId) setShowWmNotice(true); }, 2500);
-    return () => clearTimeout(t);
-  }, [status, plan, isManaged, jobId, results?.clips?.length, tutorialPhase]);
-
-  // Paying re-points the clips already on screen at their clean twins (the API
-  // does it from the Stripe webhook, a few seconds after the plan flips). Chase
-  // the job result until no served file carries the wm_ prefix, then refresh
-  // the durable map so the players switch to the clean R2 copies too.
-  useEffect(() => {
-    if (!isManaged || !jobId || !plan || plan === 'free') return;
-    const isMarked = (c) => /\/wm_[^/]*$/.test(c?.video_url || '');
-    if (!(results?.clips || []).some(isMarked)) return;
-    let cancelled = false;
-    (async () => {
-      for (const delay of [1500, 3000, 6000, 12000, 20000]) {
-        await new Promise((r) => setTimeout(r, delay));
-        if (cancelled || jobIdRef.current !== jobId) return;
-        let data;
-        try { data = await pollJob(jobId); } catch { continue; }
-        if (cancelled || jobIdRef.current !== jobId) return;
-        if (data?.result) setResults(data.result);
-        if (!(data?.result?.clips || []).some(isMarked)) {
-          fetchDurableMap().then((m) => { if (!cancelled) setDurableClips(m); }).catch(() => {});
-          return;
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan, isManaged, jobId]);
 
   const chaseDurableFile = async (index, expectedFile) => {
     const forJob = jobId;
@@ -1764,10 +1715,54 @@ function App() {
 
   // --- UI Components ---
   const navItems = [
-    { id: 'dashboard', ord: '01', icon: Film, label: 'Clip Studio', short: 'Studio', primary: true },
-    { id: 'live', ord: '02', icon: Radio, label: 'Creator Monitors', short: 'Monitors', primary: true },
-    { id: 'history', ord: '03', icon: History, label: 'Project Library', short: 'Library', primary: true },
-    { id: 'settings', ord: '04', icon: Settings, label: 'Settings & Accounts', short: 'Settings', primary: true },
+    {
+      id: 'dashboard',
+      ord: '01',
+      icon: Film,
+      label: 'Clip Studio',
+      short: 'Studio',
+      primary: true,
+      activeClass: 'bg-sky-500/15 text-sky-400 border border-sky-500/40 font-bold shadow-xs',
+      inactiveClass: 'text-muted hover:text-sky-300 hover:bg-sky-500/5',
+      iconClass: 'text-sky-400',
+      dotClass: 'bg-sky-400',
+    },
+    {
+      id: 'live',
+      ord: '02',
+      icon: Radio,
+      label: 'Creator Monitors',
+      short: 'Monitors',
+      primary: true,
+      activeClass: 'bg-red-500/15 text-red-400 border border-red-500/40 font-bold shadow-xs',
+      inactiveClass: 'text-muted hover:text-red-300 hover:bg-red-500/5',
+      iconClass: 'text-red-400',
+      dotClass: 'bg-red-500 animate-pulse',
+    },
+    {
+      id: 'history',
+      ord: '03',
+      icon: History,
+      label: 'Project Library',
+      short: 'Library',
+      primary: true,
+      activeClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 font-bold shadow-xs',
+      inactiveClass: 'text-muted hover:text-emerald-300 hover:bg-emerald-500/5',
+      iconClass: 'text-emerald-400',
+      dotClass: 'bg-emerald-400',
+    },
+    {
+      id: 'settings',
+      ord: '04',
+      icon: Settings,
+      label: 'Settings & Accounts',
+      short: 'Settings',
+      primary: true,
+      activeClass: 'bg-white/10 text-white border border-white/30 font-bold shadow-xs',
+      inactiveClass: 'text-muted hover:text-white hover:bg-white/5',
+      iconClass: 'text-white',
+      dotClass: 'bg-white',
+    },
   ];
   const activeNav = navItems.find((n) => n.id === activeTab);
 
@@ -1829,16 +1824,16 @@ function App() {
               onClick={() => goToTab(item.id)}
               title={item.label}
               disabled={tabLocked(item.id)}
-              className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-brand/10 text-brand font-semibold'
-                  : 'text-muted hover:text-ink hover:bg-paper3/60'
+                  ? item.activeClass
+                  : item.inactiveClass
               } ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
-              <NavIcon size={18} className={`shrink-0 ${isActive ? 'text-brand' : ''}`} />
+              <NavIcon size={18} className={`shrink-0 ${isActive ? item.iconClass : 'text-muted'}`} />
               <span className="hidden lg:block flex-1 text-left truncate">{item.label}</span>
               {isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-brand hidden lg:block shrink-0" />
+                <span className={`w-2 h-2 rounded-full hidden lg:block shrink-0 ${item.dotClass}`} />
               )}
             </button>
           );
@@ -1888,16 +1883,16 @@ function App() {
                 onClick={() => goToTab(item.id)}
                 disabled={tabLocked(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`relative w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-colors ${
+                className={`relative w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-all ${
                   isActive
-                    ? 'bg-brand/10 text-brand font-semibold'
-                    : 'text-muted active:bg-paper3/60'
+                    ? item.activeClass
+                    : item.inactiveClass
                 } ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
-                <NavIcon size={18} className={`shrink-0 ${isActive ? 'text-brand' : ''}`} />
+                <NavIcon size={18} className={`shrink-0 ${isActive ? item.iconClass : 'text-muted'}`} />
                 <span className="flex-1 text-left truncate">{item.label}</span>
                 {isActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${item.dotClass}`} />
                 )}
               </button>
             );
@@ -1927,10 +1922,10 @@ function App() {
                 disabled={tabLocked(item.id)}
                 aria-current={isActive ? 'page' : undefined}
                 className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-2 min-h-[54px] transition-colors ${
-                  isActive ? 'text-brand font-semibold' : 'text-muted active:text-ink'
+                  isActive ? item.iconClass + ' font-bold' : 'text-muted active:text-ink'
                 } ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
-                <NavIcon size={18} className={isActive ? 'text-brand' : ''} />
+                <NavIcon size={18} className={isActive ? item.iconClass : ''} />
                 <span className="text-[11px] leading-none truncate max-w-full px-0.5">{item.short}</span>
               </button>
             );
@@ -1963,7 +1958,8 @@ function App() {
               <BrandLogo />
             </div>
             <div className="hidden md:flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted font-mono">
+              <span className={`w-2 h-2 rounded-full ${activeNav?.dotClass || 'bg-sky-400'}`} />
+              <span className="text-xs font-bold uppercase tracking-wider text-ink font-mono">
                 {activeNav?.label || 'Clip Studio'}
               </span>
             </div>
@@ -1982,15 +1978,16 @@ function App() {
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             {/* Quick social connected badges */}
             {socialStatus.youtube?.connected && (
-              <span className="badge-ok hidden lg:inline-flex text-[11px]" title={`YouTube: ${socialStatus.youtube.channel_title}`}>
-                <Youtube size={12} /> YouTube
+              <span className="tag-uniform tag-red hidden lg:inline-flex text-[11px]" title={`YouTube: ${socialStatus.youtube.channel_title}`}>
+                <Youtube size={12} className="text-red-500" /> YouTube
               </span>
             )}
             {socialStatus.instagram?.connected && (
-              <span className="badge-ok hidden lg:inline-flex text-[11px]" title={`Instagram: @${socialStatus.instagram.username}`}>
-                <Instagram size={12} /> Instagram
+              <span className="tag-uniform hidden lg:inline-flex text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/30" title={`Instagram: @${socialStatus.instagram.username}`}>
+                <Instagram size={12} className="text-rose-400" /> Instagram
               </span>
             )}
+            <StatusTag status="green" label="Pipeline Online" className="hidden sm:inline-flex text-[11px]" />
 
             {keysMissing && (
               <button
@@ -2099,7 +2096,7 @@ function App() {
               </div>
 
               {/* SECTION: Appearance & Theme */}
-              <div className="card p-5 sm:p-6 space-y-4">
+              <div className="card p-5 sm:p-6 space-y-4 border-l-4 border-l-white">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
@@ -2139,7 +2136,7 @@ function App() {
               </div>
 
               {/* SECTION 1: AI Provider Selector */}
-              <div className="card p-5 sm:p-6 space-y-5">
+              <div className="card p-5 sm:p-6 space-y-5 border-l-4 border-l-sky-500">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
@@ -2356,7 +2353,7 @@ function App() {
               </div>
 
               {/* SECTION: Transcription & Speech-to-Text */}
-              <div className="card p-5 sm:p-6 space-y-5">
+              <div className="card p-5 sm:p-6 space-y-5 border-l-4 border-l-emerald-500">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
@@ -2511,7 +2508,7 @@ function App() {
               </div>
 
               {/* SECTION: S3-Compatible Storage */}
-              <div className="card p-5 sm:p-6 space-y-5">
+              <div className="card p-5 sm:p-6 space-y-5 border-l-4 border-l-sky-500">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
@@ -2679,7 +2676,7 @@ function App() {
               </div>
 
               {/* SECTION 2: Direct YouTube Shorts Publishing */}
-              <div className="card p-5 sm:p-6 space-y-5">
+              <div className="card p-5 sm:p-6 space-y-5 border-l-4 border-l-red-500">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
@@ -2795,15 +2792,15 @@ function App() {
                   <button
                     type="button"
                     onClick={handleConnectYouTube}
-                    className="btn-primary py-2 px-4 text-xs flex items-center gap-1.5"
+                    className="btn-red py-2 px-4 text-xs flex items-center gap-1.5 font-bold text-white shadow-xs"
                   >
-                    <Youtube size={14} /> Connect YouTube Account
+                    <Youtube size={14} className="text-white" /> Connect YouTube Account
                   </button>
                 </div>
               </div>
 
               {/* SECTION 3: Direct Instagram Reels Publishing */}
-              <div className="card p-5 sm:p-6 space-y-5">
+              <div className="card p-5 sm:p-6 space-y-5 border-l-4 border-l-pink-500">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
@@ -3068,10 +3065,10 @@ function App() {
                   {/* Right Station: Engine Deck & Live Status (5 cols) */}
                   <div className="lg:col-span-5 space-y-4">
                     {/* Live Pipeline Specs Card */}
-                    <div className="card p-5 space-y-4">
+                    <div className="card p-5 space-y-4 border-l-4 border-l-sky-500">
                       <div className="flex items-center justify-between border-b border-rule pb-2.5">
                         <span className="text-xs font-mono uppercase font-semibold text-ink flex items-center gap-2">
-                          <Cpu size={14} className="text-brandblue" /> Active Engine Pipeline
+                          <Cpu size={14} className="text-sky-400" /> Active Engine Pipeline
                         </span>
                         <span className="text-[10px] font-mono text-muted uppercase">v1.0 Stack</span>
                       </div>
@@ -3128,9 +3125,9 @@ function App() {
                     </div>
 
                     {/* Pro Tips Card */}
-                    <div className="card p-5 space-y-2.5 bg-paper3/40">
+                    <div className="card p-5 space-y-2.5 bg-paper3/40 border-l-4 border-l-emerald-500">
                       <span className="text-xs font-mono uppercase font-semibold text-ink flex items-center gap-1.5">
-                        <Sparkles size={14} className="text-sniprorange" /> Tips for 10x Virality
+                        <Sparkles size={14} className="text-emerald-400" /> Tips for 10x Virality
                       </span>
                       <ul className="text-xs text-muted space-y-2 list-disc list-inside leading-relaxed">
                         <li><b>Hinglish Script:</b> Ideal for Hindi gaming streams — transliterates spoken Hindi into high-retention Roman subtitles.</li>
@@ -3315,7 +3312,7 @@ function App() {
                       {results.clips.length > 1 && (
                         <button
                           onClick={() => setShowScheduleWeek(true)}
-                          className="btn-primary px-4 py-2 text-xs"
+                          className="btn-green px-4 py-2 text-xs font-bold text-white shadow-xs"
                         >
                           <Calendar size={14} />
                           Schedule Week
@@ -3489,7 +3486,7 @@ function App() {
             </button>
             <button
               onClick={() => { setShowKeyModal(false); goToTab('settings'); }}
-              className="btn-primary flex-1 px-4 py-2 text-sm"
+              className="btn-blue flex-1 px-4 py-2 text-sm font-semibold"
             >
               Go to Settings
             </button>
@@ -3579,7 +3576,7 @@ function App() {
               <button onClick={() => setQualityGate(null)} className="btn-ghost">cancel</button>
               <button
                 onClick={() => { const d = qualityGate.data; setQualityGate(null); handleProcess(d, true); }}
-                className="btn-primary"
+                className="btn-red px-4 py-2 text-sm font-bold text-white shadow-xs"
               >
                 process anyway
               </button>
