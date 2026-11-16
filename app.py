@@ -3527,6 +3527,40 @@ def _archive_clip_edit_bg(job_id: str, clip_index: int, filename: str):
     asyncio.create_task(_run())
 
 
+def _sync_edited_clip_to_s3_bg(job_id: str, clip_index: int, new_filename: str, old_filename: Optional[str] = None):
+    """Fire-and-forget sync of edited clip to S3 storage, replacing old S3 file and updating metadata."""
+    def _do_sync():
+        try:
+            import s3_uploader
+            if not s3_uploader.is_s3_enabled():
+                return
+            out_dir = os.path.join(OUTPUT_DIR, job_id)
+            new_path = os.path.join(out_dir, new_filename)
+            if not os.path.exists(new_path):
+                return
+            new_s3_url = s3_uploader.sync_clip_to_s3(job_id, new_path, old_filename=old_filename)
+            if new_s3_url:
+                if job_id in jobs:
+                    clips = jobs[job_id].get("result", {}).get("clips", [])
+                    if clip_index < len(clips):
+                        clips[clip_index]["stream_url"] = new_s3_url
+                meta_files = glob.glob(os.path.join(out_dir, "*_metadata.json"))
+                if meta_files:
+                    with open(meta_files[0], "r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                    shorts = meta.get("shorts", [])
+                    if clip_index < len(shorts):
+                        shorts[clip_index]["stream_url"] = new_s3_url
+                        shorts[clip_index]["video_url"] = f"/videos/{job_id}/{new_filename}"
+                        meta["shorts"] = shorts
+                        write_json_atomic(meta_files[0], meta, indent=4)
+                        logger.info(f"Updated metadata for clip {clip_index} with new S3 stream URL.")
+        except Exception as e:
+            logger.warning(f"Background S3 sync error for edited clip ({job_id}/{new_filename}): {e}")
+
+    threading.Thread(target=_do_sync, daemon=True).start()
+
+
 async def _autopilot_job_finished(job_id, job):
     if not BILLING_ENABLED or not job or not job.get('user_id'):
         return
@@ -6780,6 +6814,7 @@ async def edit_clip(
             print(f"⚠️ Failed to update metadata.json: {e}")
 
         _archive_clip_edit_bg(req.job_id, req.clip_index, edited_filename)
+        _sync_edited_clip_to_s3_bg(req.job_id, req.clip_index, edited_filename, old_filename=filename)
 
         if reservation_id:
             await _metering.commit_reservation(reservation_id)
@@ -7221,6 +7256,7 @@ async def _rerender_locked(req: RerenderRequest, request: Request, job):
             mem_clips[req.clip_index].update(updates)
 
         _archive_clip_edit_bg(req.job_id, req.clip_index, served_name)
+        _sync_edited_clip_to_s3_bg(req.job_id, req.clip_index, served_name)
         if reservation_id:
             await _metering.commit_reservation(reservation_id)
         return {
@@ -7575,6 +7611,7 @@ async def _reframe_locked(req: ReframeRequest, request: Request, job, overrides)
             mem_clips[req.clip_index].update(updates)
 
         _archive_clip_edit_bg(req.job_id, req.clip_index, served_name)
+        _sync_edited_clip_to_s3_bg(req.job_id, req.clip_index, served_name)
         if reservation_id:
             await _metering.commit_reservation(reservation_id)
         # The cut is untouched, but the response mirrors /rerender's shape
@@ -8049,6 +8086,7 @@ async def add_subtitles(req: SubtitleRequest, request: Request):
         # Non-critical, but good for persistence
 
     _archive_clip_edit_bg(req.job_id, req.clip_index, output_filename)
+    _sync_edited_clip_to_s3_bg(req.job_id, req.clip_index, output_filename, old_filename=filename)
 
     return {
         "success": True,
@@ -8115,6 +8153,7 @@ async def remove_subtitles(req: RemoveSubtitlesRequest, request: Request):
         print(f"⚠️ Failed to update metadata.json: {e}")
 
     _archive_clip_edit_bg(req.job_id, req.clip_index, filename)
+    _sync_edited_clip_to_s3_bg(req.job_id, req.clip_index, filename)
     return {"success": True, "new_video_url": new_url}
 
 
@@ -8263,6 +8302,7 @@ async def add_hook(req: HookRequest, request: Request):
         print(f"⚠️ Failed to update metadata.json: {e}")
 
     _archive_clip_edit_bg(req.job_id, req.clip_index, output_filename)
+    _sync_edited_clip_to_s3_bg(req.job_id, req.clip_index, output_filename, old_filename=filename)
 
     return {
         "success": True,

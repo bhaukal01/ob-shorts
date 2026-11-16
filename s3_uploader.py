@@ -1,4 +1,5 @@
 import os
+from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 load_dotenv()
 import boto3
@@ -216,6 +217,46 @@ def get_presigned_stream_url_for_clip(job_id, filename, expiration=86400):
     except Exception as e:
         logger.error(f"Failed to generate presigned stream URL for {s3_key}: {e}")
         return None
+
+
+def sync_clip_to_s3(job_id: str, new_filepath: str, old_filename: Optional[str] = None) -> Optional[str]:
+    """Upload an edited clip to S3, remove old version if different, and return fresh streaming URL."""
+    if not is_s3_enabled() or not os.path.exists(new_filepath):
+        return None
+
+    cfg = get_s3_config()
+    s3_client = get_s3_client(cfg)
+    if not s3_client:
+        return None
+
+    new_filename = os.path.basename(new_filepath)
+    new_key = f"{job_id}/{new_filename}"
+
+    # 1. Upload new file
+    extra_args = {"ContentType": "video/mp4"}
+    try:
+        s3_client.upload_file(new_filepath, cfg["bucket_name"], new_key, ExtraArgs=extra_args)
+    except Exception as e:
+        logger.error(f"Failed to sync edited clip to S3 ({new_key}): {e}")
+        return None
+
+    # 2. Invalidate cache for both old and new
+    _presigned_cache.pop((job_id, new_filename, "stream"), None)
+    _presigned_cache.pop((job_id, new_filename, "download"), None)
+
+    # 3. Clean up old S3 object if different
+    if old_filename and old_filename != new_filename:
+        old_key = f"{job_id}/{old_filename}"
+        _presigned_cache.pop((job_id, old_filename, "stream"), None)
+        _presigned_cache.pop((job_id, old_filename, "download"), None)
+        try:
+            s3_client.delete_object(Bucket=cfg["bucket_name"], Key=old_key)
+            logger.info(f"Replaced old clip on S3: {old_key} -> {new_key}")
+        except Exception as e:
+            logger.warning(f"Could not delete old clip on S3 ({old_key}): {e}")
+
+    # 4. Return new presigned stream URL
+    return get_presigned_stream_url_for_clip(job_id, new_filename)
 
 
 def generate_presigned_url(bucket_name, object_key, expiration=3600):

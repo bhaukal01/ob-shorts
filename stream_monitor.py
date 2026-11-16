@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -28,11 +29,15 @@ import database
 import llm_backend
 
 _MONITOR_THREAD: Optional[threading.Thread] = None
+_RENDER_WORKER_THREAD: Optional[threading.Thread] = None
 _STOP_EVENT = threading.Event()
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE_STREAM_THREADS: Dict[int, threading.Thread] = {}
 _STREAM_ACTIVE_JOBS: Dict[str, Dict[str, Any]] = {}
-_PROCESSING_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="StreamProcWorker")
+_PROCESSING_EXECUTOR = ThreadPoolExecutor(max_workers=3, thread_name_prefix="StreamProcWorker")
+_STREAM_CLIP_RENDER_QUEUE: queue.Queue = queue.Queue()
+_JOB_PENDING_TASKS: Dict[str, int] = {}
+_JOB_CAPTURE_FINISHED: set = set()
 
 # Continuous recording segment duration: 10 minutes
 STREAM_SEGMENT_DURATION = 600
@@ -424,50 +429,51 @@ Guidelines:
     return None
 
 
-def process_live_segment(
-    segment_path: str,
+def _ensure_render_worker_running() -> None:
+    """Ensure the single sequential clip render worker is alive."""
+    global _RENDER_WORKER_THREAD
+    with _ACTIVE_LOCK:
+        if _RENDER_WORKER_THREAD and _RENDER_WORKER_THREAD.is_alive():
+            return
+        _RENDER_WORKER_THREAD = threading.Thread(
+            target=_stream_render_worker,
+            daemon=True,
+            name="StreamClipSequentialRenderWorker",
+        )
+        _RENDER_WORKER_THREAD.start()
+        _log("Sequential stream clip render worker started.")
+
+
+def drain_render_queue() -> None:
+    """Wait until all queued clips in the render queue finish processing."""
+    _STREAM_CLIP_RENDER_QUEUE.join()
+
+
+def _render_single_stream_clip(
+    seg_file: str,
     live_title: str,
     job_id: str,
     layout: str = "gaming",
     subtitle_script: str = "auto",
+    moment: Optional[Dict[str, Any]] = None,
+    transcript: Optional[Dict[str, Any]] = None,
     seg_num: Optional[int] = None,
 ) -> Optional[str]:
-    """Transcribe 10m segment, analyze for viral highlight, cut and render short if worthy,
-    and append to the unified stream project ({job_id}_metadata.json).
+    """Execute the heavy rendering steps for a single clip:
+    1. Cut sub-clip from segment video with FFmpeg.
+    2. Reframe to 9:16 vertical (Active speaker / gaming layout).
+    3. Generate and burn compact subtitles.
+    4. Auto-upload to S3 storage and update metadata.
     """
     prefix = f"Segment #{seg_num}: " if seg_num else ""
+    if not moment:
+        return None
+
     try:
-        from subtitles import transcribe_audio
-        _append_stream_log(job_id, f"🎙️ {prefix}Transcribing audio with Whisper...")
-        transcript = transcribe_audio(segment_path)
-        if not transcript or not transcript.get("segments"):
-            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no speech audio detected in this 10m window).")
-            return None
-
-        moment = analyze_segment_for_viral_moment(transcript, live_title)
-        if not moment:
-            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no highlight moment in this 10m window).")
-            return None
-
         clip_start = moment["start"]
         clip_end = moment["end"]
         clip_title = moment["title"]
-        hook_text = moment["hook"]
-
-        _append_stream_log(
-            job_id,
-            f"🔥 {prefix}Highlight selected: '{clip_title}' [{clip_start:.1f}s -> {clip_end:.1f}s]. Cutting & rendering..."
-        )
-
-        # Immediately transliterate transcript to Hinglish if selected,
-        # so that all subsequent ASS rendering, metadata persistence, and editing operate in Hinglish natively
-        if subtitle_script == "hinglish":
-            try:
-                import hindi_transliterator
-                transcript = hindi_transliterator.transliterate_transcript(transcript)
-                _log("🔤 Transliterated live stream transcript to Hinglish")
-            except Exception as e:
-                _log(f"Hinglish transliteration notice: {e}")
+        hook_text = moment.get("hook", "Must Watch!")
 
         out_base = os.environ.get("OUTPUT_DIR", "output")
         out_dir = os.path.abspath(os.path.join(out_base, job_id))
@@ -492,7 +498,8 @@ def process_live_segment(
             }
 
         meta["subtitle_script"] = subtitle_script
-        meta["transcript"] = transcript
+        if transcript:
+            meta["transcript"] = transcript
 
         existing_shorts = meta.get("shorts", [])
         clip_num = len(existing_shorts) + 1
@@ -505,7 +512,7 @@ def process_live_segment(
         cut_cmd = [
             "ffmpeg", "-y",
             "-ss", str(clip_start),
-            "-i", segment_path,
+            "-i", seg_file,
             "-t", str(dur),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
             "-c:a", "aac",
@@ -544,14 +551,15 @@ def process_live_segment(
         sub_clip_path = os.path.join(out_dir, f"subtitled_{job_id}_{clip_filename}")
 
         try:
-            _subs.generate_ass(
-                transcript, clip_start, clip_end, ass_path,
-                fontsize=16, font_name="Anton" if subtitle_script != "hindi" else "Noto Sans Devanagari",
-            )
-            if os.path.exists(ass_path):
-                _subs.burn_subtitles(final_clip, ass_path, sub_clip_path)
-                if os.path.exists(sub_clip_path) and os.path.getsize(sub_clip_path) > 0:
-                    final_clip = sub_clip_path
+            if transcript:
+                _subs.generate_ass(
+                    transcript, clip_start, clip_end, ass_path,
+                    fontsize=16, font_name="Anton" if subtitle_script != "hindi" else "Noto Sans Devanagari",
+                )
+                if os.path.exists(ass_path):
+                    _subs.burn_subtitles(final_clip, ass_path, sub_clip_path)
+                    if os.path.exists(sub_clip_path) and os.path.getsize(sub_clip_path) > 0:
+                        final_clip = sub_clip_path
         except Exception as e:
             _log(f"Burning subtitles failed: {e}")
 
@@ -560,7 +568,7 @@ def process_live_segment(
         try:
             import s3_uploader
             if s3_uploader.is_s3_enabled():
-                s3_uploader.upload_final_video(final_clip, job_id, os.path.basename(final_clip))
+                s3_uploader.upload_file_to_s3(final_clip, s3_key=f"{job_id}/{os.path.basename(final_clip)}")
                 s3_url = s3_uploader.get_presigned_stream_url_for_clip(job_id, os.path.basename(final_clip))
         except Exception as e:
             _log(f"S3 upload notice: {e}")
@@ -604,6 +612,170 @@ def process_live_segment(
         _append_stream_log(job_id, f"✅ Clip #{clip_num} published: {final_clip}")
         return final_clip
     except Exception as e:
+        _append_stream_log(job_id, f"⚠️ Error rendering live clip: {e}")
+        return None
+
+
+def _stream_render_worker() -> None:
+    """Sequential worker processing stream clip rendering one-by-one."""
+    _log("Sequential stream clip render worker started.")
+    while not _STOP_EVENT.is_set():
+        try:
+            task = _STREAM_CLIP_RENDER_QUEUE.get(timeout=1.0)
+        except queue.Empty:
+            continue
+
+        job_id = task.get("job_id")
+        seg_file = task.get("seg_file")
+        seg_num = task.get("seg_num")
+        live_title = task.get("live_title")
+        layout = task.get("layout", "gaming")
+        subtitle_script = task.get("subtitle_script", "auto")
+        moment = task.get("moment")
+        transcript = task.get("transcript")
+
+        try:
+            _append_stream_log(
+                job_id,
+                f"🎬 Starting render for Clip from Segment #{seg_num} ('{moment.get('title')}') [Sequential Worker Active]..."
+            )
+            final_clip = _render_single_stream_clip(
+                seg_file=seg_file,
+                live_title=live_title,
+                job_id=job_id,
+                layout=layout,
+                subtitle_script=subtitle_script,
+                moment=moment,
+                transcript=transcript,
+                seg_num=seg_num,
+            )
+            if final_clip:
+                _append_stream_log(
+                    job_id,
+                    f"🎉 Clip from Segment #{seg_num} rendered & published ({os.path.basename(final_clip)})."
+                )
+        except Exception as e:
+            _append_stream_log(job_id, f"⚠️ Segment #{seg_num} render failed: {e}")
+        finally:
+            if seg_file and os.path.exists(seg_file):
+                try:
+                    os.remove(seg_file)
+                except OSError:
+                    pass
+
+            with _ACTIVE_LOCK:
+                if job_id:
+                    _JOB_PENDING_TASKS[job_id] = max(0, _JOB_PENDING_TASKS.get(job_id, 1) - 1)
+
+            if job_id:
+                _check_and_finalize_stream(job_id)
+            _STREAM_CLIP_RENDER_QUEUE.task_done()
+
+
+def _check_and_finalize_stream(job_id: str) -> None:
+    """Check if stream capture ended and all queued render jobs are finished."""
+    should_finalize = False
+    with _ACTIVE_LOCK:
+        pending = _JOB_PENDING_TASKS.get(job_id, 0)
+        is_finished = job_id in _JOB_CAPTURE_FINISHED
+        if is_finished and pending == 0:
+            should_finalize = True
+
+    if should_finalize:
+        _finalize_stream_project(job_id)
+
+
+def _finalize_stream_project(job_id: str) -> None:
+    """Mark stream project as completed and delete all raw captured segment files."""
+    _append_stream_log(job_id, "🏁 All queued clips rendered and published to S3. Live stream project completed.")
+    with _ACTIVE_LOCK:
+        if job_id in _STREAM_ACTIVE_JOBS:
+            _STREAM_ACTIVE_JOBS[job_id]["status"] = "completed"
+
+    try:
+        import app
+        if job_id in app.jobs:
+            app.jobs[job_id]["status"] = "completed"
+            app.jobs[job_id].setdefault("logs", []).append("🏁 All clips rendered and published to S3. Live stream project completed.")
+    except Exception:
+        pass
+
+    out_base = os.environ.get("OUTPUT_DIR", "output")
+    job_dir = os.path.abspath(os.path.join(out_base, job_id))
+    info_path = os.path.join(job_dir, "_project_info.json")
+    if os.path.exists(info_path):
+        try:
+            with open(info_path, "r", encoding="utf-8") as f:
+                idata = json.load(f)
+            idata["status"] = "completed"
+            with open(info_path, "w", encoding="utf-8") as f:
+                json.dump(idata, f, indent=2)
+        except Exception:
+            pass
+
+    # Clean up all raw 10-minute segment files to free up disk space immediately
+    seg_dir = os.path.join(job_dir, "segments")
+    if os.path.exists(seg_dir):
+        try:
+            shutil.rmtree(seg_dir, ignore_errors=True)
+            _log(f"🧹 Cleaned up raw stream segment files in {seg_dir}")
+        except Exception as e:
+            _log(f"Notice cleaning segments for {job_id}: {e}")
+
+    with _ACTIVE_LOCK:
+        _JOB_PENDING_TASKS.pop(job_id, None)
+        _JOB_CAPTURE_FINISHED.discard(job_id)
+
+
+def process_live_segment(
+    segment_path: str,
+    live_title: str,
+    job_id: str,
+    layout: str = "gaming",
+    subtitle_script: str = "auto",
+    seg_num: Optional[int] = None,
+) -> Optional[str]:
+    """Transcribe 10m segment, analyze for viral highlight, cut and render short if worthy,
+    and append to the unified stream project ({job_id}_metadata.json). Direct synchronous path.
+    """
+    prefix = f"Segment #{seg_num}: " if seg_num else ""
+    try:
+        from subtitles import transcribe_audio
+        _append_stream_log(job_id, f"🎙️ {prefix}Transcribing audio with Whisper...")
+        transcript = transcribe_audio(segment_path)
+        if not transcript or not transcript.get("segments"):
+            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no speech audio detected in this 10m window).")
+            return None
+
+        moment = analyze_segment_for_viral_moment(transcript, live_title)
+        if not moment:
+            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no highlight moment in this 10m window).")
+            return None
+
+        _append_stream_log(
+            job_id,
+            f"🔥 {prefix}Highlight selected: '{moment['title']}' [{moment['start']:.1f}s -> {moment['end']:.1f}s]. Cutting & rendering..."
+        )
+
+        if subtitle_script == "hinglish":
+            try:
+                import hindi_transliterator
+                transcript = hindi_transliterator.transliterate_transcript(transcript)
+                _log("🔤 Transliterated live stream transcript to Hinglish")
+            except Exception as e:
+                _log(f"Hinglish transliteration notice: {e}")
+
+        return _render_single_stream_clip(
+            seg_file=segment_path,
+            live_title=live_title,
+            job_id=job_id,
+            layout=layout,
+            subtitle_script=subtitle_script,
+            moment=moment,
+            transcript=transcript,
+            seg_num=seg_num,
+        )
+    except Exception as e:
         _append_stream_log(job_id, f"⚠️ Error processing live segment: {e}")
         return None
 
@@ -616,29 +788,72 @@ def _background_process_segment_task(
     subtitle_script: str,
     seg_num: int,
 ) -> None:
-    """Background task running transcription, LLM highlight picker, and clipping."""
+    """Background task running transcription, LLM highlight picker, and enqueuing render."""
+    _ensure_render_worker_running()
+    prefix = f"Segment #{seg_num}: "
     try:
-        _append_stream_log(job_id, f"⚙️ Segment #{seg_num}: Background analysis & clipping initiated...")
-        clip = process_live_segment(
-            seg_file,
-            live_title=live_title,
-            job_id=job_id,
-            layout=layout,
-            subtitle_script=subtitle_script,
-            seg_num=seg_num,
+        from subtitles import transcribe_audio
+        _append_stream_log(job_id, f"🎙️ {prefix}Transcribing audio with Whisper...")
+        transcript = transcribe_audio(seg_file)
+        if not transcript or not transcript.get("segments"):
+            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no speech audio detected in this 10m window).")
+            if os.path.exists(seg_file):
+                try:
+                    os.remove(seg_file)
+                except OSError:
+                    pass
+            with _ACTIVE_LOCK:
+                _JOB_PENDING_TASKS[job_id] = max(0, _JOB_PENDING_TASKS.get(job_id, 1) - 1)
+            _check_and_finalize_stream(job_id)
+            return
+
+        moment = analyze_segment_for_viral_moment(transcript, live_title)
+        if not moment:
+            _append_stream_log(job_id, f"ℹ️ {prefix}Skipped (no highlight moment in this 10m window).")
+            if os.path.exists(seg_file):
+                try:
+                    os.remove(seg_file)
+                except OSError:
+                    pass
+            with _ACTIVE_LOCK:
+                _JOB_PENDING_TASKS[job_id] = max(0, _JOB_PENDING_TASKS.get(job_id, 1) - 1)
+            _check_and_finalize_stream(job_id)
+            return
+
+        if subtitle_script == "hinglish":
+            try:
+                import hindi_transliterator
+                transcript = hindi_transliterator.transliterate_transcript(transcript)
+                _log("🔤 Transliterated live stream transcript to Hinglish")
+            except Exception as e:
+                _log(f"Hinglish transliteration notice: {e}")
+
+        task = {
+            "job_id": job_id,
+            "seg_file": seg_file,
+            "seg_num": seg_num,
+            "live_title": live_title,
+            "layout": layout,
+            "subtitle_script": subtitle_script,
+            "moment": moment,
+            "transcript": transcript,
+        }
+        _STREAM_CLIP_RENDER_QUEUE.put(task)
+        qsize = _STREAM_CLIP_RENDER_QUEUE.qsize()
+        _append_stream_log(
+            job_id,
+            f"📥 {prefix}Highlight '{moment['title']}' queued for sequential render (Queue position: #{qsize})."
         )
-        if clip:
-            _append_stream_log(job_id, f"🎉 Segment #{seg_num}: Successfully created short: {os.path.basename(clip)}")
-        else:
-            _append_stream_log(job_id, f"ℹ️ Segment #{seg_num}: No short produced from this window.")
     except Exception as e:
-        _append_stream_log(job_id, f"⚠️ Segment #{seg_num} failed: {e}")
-    finally:
+        _append_stream_log(job_id, f"⚠️ {prefix}Analysis error: {e}")
         if os.path.exists(seg_file):
             try:
                 os.remove(seg_file)
             except OSError:
                 pass
+        with _ACTIVE_LOCK:
+            _JOB_PENDING_TASKS[job_id] = max(0, _JOB_PENDING_TASKS.get(job_id, 1) - 1)
+        _check_and_finalize_stream(job_id)
 
 
 def _stream_capture_worker(
@@ -650,6 +865,7 @@ def _stream_capture_worker(
     live_info: Dict[str, Any],
 ) -> None:
     """Continuous 10-minute segment recorder for an active live stream."""
+    _ensure_render_worker_running()
     _log(f"🎬 Started live stream capture thread for monitor {mon_id} ({live_info['title']})")
     mon = database.get_live_monitor(mon_id) or {"id": mon_id, "channel_url": channel_url}
     job_id = get_or_create_stream_project(mon, live_info)
@@ -690,6 +906,7 @@ def _stream_capture_worker(
             if recorded and os.path.exists(seg_file) and os.path.getsize(seg_file) > 100000:
                 _log(f"📦 [Monitor {mon_id}] Segment #{seg_index + 1} captured ({os.path.getsize(seg_file)} bytes). Dispatching to background processor...")
                 with _ACTIVE_LOCK:
+                    _JOB_PENDING_TASKS[job_id] = _JOB_PENDING_TASKS.get(job_id, 0) + 1
                     if job_id in _STREAM_ACTIVE_JOBS:
                         _STREAM_ACTIVE_JOBS[job_id]["logs"].append(
                             f"⚙️ Segment #{seg_index + 1} captured. Analyzing for viral highlight in background..."
@@ -721,21 +938,17 @@ def _stream_capture_worker(
         _log(f"⏹️ Live stream capture worker finished for {job_id}")
         database.update_live_monitor(mon_id, status="offline")
         with _ACTIVE_LOCK:
-            if job_id in _STREAM_ACTIVE_JOBS:
-                _STREAM_ACTIVE_JOBS[job_id]["status"] = "completed"
-                _STREAM_ACTIVE_JOBS[job_id]["logs"].append("🏁 Live stream broadcast ended. Project completed.")
-        info_path = os.path.join(job_dir, "_project_info.json")
-        if os.path.exists(info_path):
-            try:
-                with open(info_path, "r", encoding="utf-8") as f:
-                    idata = json.load(f)
-                idata["status"] = "completed"
-                with open(info_path, "w", encoding="utf-8") as f:
-                    json.dump(idata, f, indent=2)
-            except Exception:
-                pass
-        with _ACTIVE_LOCK:
             _ACTIVE_STREAM_THREADS.pop(mon_id, None)
+            _JOB_CAPTURE_FINISHED.add(job_id)
+            pending = _JOB_PENDING_TASKS.get(job_id, 0)
+            if pending > 0:
+                if job_id in _STREAM_ACTIVE_JOBS:
+                    _STREAM_ACTIVE_JOBS[job_id]["status"] = "finalizing"
+                _append_stream_log(
+                    job_id,
+                    f"⏹️ Live stream broadcast ended. Finalizing {pending} remaining clip render(s)..."
+                )
+        _check_and_finalize_stream(job_id)
 
 
 def get_creator_streams(monitor_id: int) -> List[Dict[str, Any]]:
