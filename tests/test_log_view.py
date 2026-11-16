@@ -47,6 +47,12 @@ def test_technical_lines_are_hidden():
     assert friendly_log_line("yt-dlp downloading format 137") is None
 
 
+def test_llm_log_friendly_matching():
+    assert friendly_log_line("🤖  Analyzing with Gemini (2-pass: score → detail)...") == "🤖 Finding the best moments…"
+    assert friendly_log_line("🤖  Analyzing with local LLM at http://localhost:11434 (2-pass: score → detail)...") == "🤖 Finding the best moments…"
+    assert friendly_log_line("🤖  Analyzing with OpenAI API at https://api.onebyt.live/v1 (2-pass: score → detail)...") == "🤖 Finding the best moments…"
+
+
 def test_errors_kept_without_paths():
     assert friendly_log_line("Process failed with exit code 1") == \
         "Process failed with exit code 1"

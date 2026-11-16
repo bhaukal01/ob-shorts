@@ -2157,7 +2157,7 @@ def _run_gemini_stage(client, model_name, prompt, schema):
                 '503', 'UNAVAILABLE', '429', 'RESOURCE_EXHAUSTED',
                 '500', 'INTERNAL', 'overloaded', 'Deadline',
                 'empty response body', 'did not contain a JSON object',
-                'Failed to parse Gemini JSON response',
+                'Failed to parse', 'JSON response',
                 # OpenAI-compatible servers: model still loading, busy, or a
                 # small model that skipped a required field this time.
                 'ConnectError', 'ReadTimeout', 'RemoteProtocolError', '502', '504',
@@ -2165,7 +2165,7 @@ def _run_gemini_stage(client, model_name, prompt, schema):
             if attempt == max_attempts or not transient:
                 raise
             wait = 5 * (2 ** (attempt - 1))
-            who = "LLM server" if use_local else "Gemini"
+            who = "OpenAI API" if use_local else "Gemini"
             print(f"⚠️ {who} transient error (attempt {attempt}/{max_attempts}), retrying in {wait}s: {msg[:150]}")
             time.sleep(wait)
 
@@ -2227,7 +2227,7 @@ def get_viral_clips(transcript_result, video_duration, viewer_clips=None):
         # Self-hosted text model: no Google key needed for this stage.
         client = None
         model_name = llm_backend.model_name()
-        print(f"\U0001f916  Analyzing with local LLM at {llm_backend.base_url()} (2-pass: score → detail)...")
+        print(f"\U0001f916  Analyzing with OpenAI API at {llm_backend.base_url()} (2-pass: score → detail)...")
     else:
         print("\U0001f916  Analyzing with Gemini (2-pass: score → detail)...")
         api_key = os.getenv("GEMINI_API_KEY")
@@ -2413,7 +2413,8 @@ def get_viral_clips(transcript_result, video_duration, viewer_clips=None):
         print(f"🚫 {e}")
         raise
     except Exception as e:
-        print(f"❌ Gemini Error: {e}")
+        who = "OpenAI API" if llm_backend.active() else "Gemini"
+        print(f"❌ {who} Error: {e}")
         return None
 
 

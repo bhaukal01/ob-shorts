@@ -2,6 +2,7 @@ import argparse
 import json
 import mimetypes
 import os
+import re
 import sys
 from typing import List, Optional
 
@@ -424,23 +425,67 @@ def _escape_invalid_unicode_escapes(text: str) -> str:
     return "".join(chars)
 
 
-def _parse_json_response_text(text: str) -> dict:
-    if not text:
-        raise ValueError("Gemini returned an empty response body.")
-    candidate = _extract_json_candidate(text).replace("\x00", "").strip()
-    if not candidate:
-        raise ValueError("Gemini response did not contain a JSON object.")
-    parse_attempts = [candidate]
-    sanitized_candidate = _escape_invalid_unicode_escapes(candidate)
-    if sanitized_candidate != candidate:
-        parse_attempts.append(sanitized_candidate)
+def _parse_json_response_text(text: str, provider_name: str = "Gemini") -> dict:
+    if not text or not str(text).strip():
+        raise ValueError(f"{provider_name} returned an empty response body.")
+
+    cleaned = str(text).strip()
+    # Strip <think>...</think> reasoning blocks from DeepSeek / reasoning models
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL).strip()
+    cleaned = re.sub(r"</?think>", "", cleaned).strip()
+    cleaned = cleaned.replace("\x00", "").strip()
+
+    if not cleaned:
+        raise ValueError(f"{provider_name} response contained no content outside thinking tags.")
+
+    # 1. Search for markdown code fences (```json ... ``` or ``` ... ```)
+    code_fences = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
+    candidates_to_try = []
+    for fence in code_fences:
+        cand = fence.strip()
+        if "{" in cand:
+            candidates_to_try.append(cand)
+
+    # 2. Add candidate extracted via first '{' and last '}'
+    start_brace = cleaned.find("{")
+    end_brace = cleaned.rfind("}")
+    if start_brace != -1 and end_brace != -1 and end_brace > start_brace:
+        candidates_to_try.append(cleaned[start_brace:end_brace + 1])
+
+    # 3. Add full cleaned text
+    candidates_to_try.append(cleaned)
+
+    decoder = json.JSONDecoder()
     last_error: Optional[Exception] = None
-    for parse_candidate in parse_attempts:
-        try:
-            return json.loads(parse_candidate)
-        except json.JSONDecodeError as e:
-            last_error = e
-    raise ValueError(f"Failed to parse Gemini JSON response: {last_error}")
+
+    for candidate in candidates_to_try:
+        sanitized = _escape_invalid_unicode_escapes(candidate)
+        variants = [candidate] if sanitized == candidate else [candidate, sanitized]
+
+        for text_variant in variants:
+            # First attempt: direct json.loads (fast path for clean JSON)
+            try:
+                res = json.loads(text_variant)
+                if isinstance(res, dict):
+                    return res
+            except Exception as e:
+                last_error = e
+
+            # Second attempt: raw_decode starting at each '{' to ignore trailing markdown/notes
+            idx = 0
+            while True:
+                idx = text_variant.find("{", idx)
+                if idx == -1:
+                    break
+                try:
+                    obj, _ = decoder.raw_decode(text_variant, idx)
+                    if isinstance(obj, dict):
+                        return obj
+                except Exception as e:
+                    last_error = e
+                idx += 1
+
+    raise ValueError(f"Failed to parse {provider_name} JSON response: {last_error or 'No valid JSON object found'}")
 
 
 def upload_media(client, path, mime_type=None):

@@ -107,6 +107,36 @@ def test_code_fenced_json_is_accepted(local, monkeypatch):
     assert parsed == {"windows": []}
 
 
+def test_reasoning_content_fallback(local, monkeypatch):
+    """Reasoning models (e.g. DeepSeek) might place JSON inside reasoning_content if content is empty."""
+    def handler(request):
+        return httpx.Response(200, json={
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning_content": json.dumps({"windows": [{"id": "w0", "start": 0, "end": 10, "score": 70, "reason": "good"}]})
+                }
+            }],
+            "usage": {}
+        })
+
+    _serve(handler, monkeypatch)
+    parsed, _ = llm_backend.generate_json("prompt", gemini_worker.ScoreResponse)
+    assert parsed["windows"][0]["score"] == 70
+
+
+def test_trailing_commentary_with_braces_ignored(local, monkeypatch):
+    """Ensure trailing commentary like 'Note: evaluated {1} item' does not cause Extra data errors."""
+    def handler(request):
+        text = json.dumps({"windows": [{"id": "w0", "start": 0, "end": 10, "score": 90, "reason": "strong"}]}) + "\n\nNote: evaluated {1} window."
+        return httpx.Response(200, json={"choices": [{"message": {"content": text}}], "usage": {}})
+
+    _serve(handler, monkeypatch)
+    parsed, _ = llm_backend.generate_json("prompt", gemini_worker.ScoreResponse)
+    assert parsed["windows"][0]["score"] == 90
+
+
 def test_schema_violation_raises_instead_of_leaking_into_the_pipeline(local, monkeypatch):
     _serve(lambda r: _completion({"windows": [{"id": "w0"}]}), monkeypatch)
     with pytest.raises(Exception) as exc:

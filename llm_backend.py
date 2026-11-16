@@ -169,7 +169,7 @@ async def fetch_models(base_url: str, api_key: Optional[str] = None, timeout: fl
                 raise RuntimeError(f"Endpoint returned 404 Not Found at {target_url}")
 
         if resp.status_code >= 400:
-            raise RuntimeError(f"LLM server returned error HTTP {resp.status_code}: {resp.text[:200]}")
+            raise RuntimeError(f"OpenAI API server returned error HTTP {resp.status_code}: {resp.text[:200]}")
 
         try:
             data = resp.json()
@@ -251,21 +251,35 @@ def generate_json(prompt: Union[str, list], schema: Type[BaseModel], model: Opti
                 continue
             if resp.status_code >= 400:
                 raise RuntimeError(
-                    f"LLM server {resp.status_code} from {url}: {resp.text[:300]}")
+                    f"OpenAI API server {resp.status_code} from {url}: {resp.text[:300]}")
             data = resp.json()
             break
         else:
             raise RuntimeError(
-                f"LLM server rejected every response_format variant: {last_rejection}")
+                f"OpenAI API server rejected every response_format variant: {last_rejection}")
 
     choices = data.get("choices") or []
-    text = ""
-    if choices:
-        msg = choices[0].get("message") or {}
-        text = msg.get("content") or ""
-        if isinstance(text, list):  # some servers return content parts
-            text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
-    parsed = gemini_worker._parse_json_response_text(text)
+    if not choices:
+        raise RuntimeError(f"OpenAI API server returned empty choices from {url}: {data}")
+
+    msg = choices[0].get("message") or {}
+    text = msg.get("content") or ""
+    if isinstance(text, list):  # some servers return content parts
+        text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
+    if not text or not str(text).strip():
+        # Fallback for reasoning models that place thinking in reasoning fields
+        for reason_key in ("reasoning_content", "reasoning", "thought"):
+            r_val = msg.get(reason_key)
+            if r_val:
+                if isinstance(r_val, str) and r_val.strip():
+                    text = r_val.strip()
+                    break
+                elif isinstance(r_val, list):
+                    text = "".join(p.get("text", "") for p in r_val if isinstance(p, dict)).strip()
+                    if text:
+                        break
+
+    parsed = gemini_worker._parse_json_response_text(text, provider_name="OpenAI API")
     # Validate against the same schema Gemini enforces server-side, so a
     # local model that drops a field fails here with a readable error
     # (retried by the caller) instead of deep inside the clip pipeline.

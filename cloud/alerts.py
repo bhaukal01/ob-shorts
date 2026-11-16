@@ -63,7 +63,7 @@ def _classify_failure(err: str) -> str:
     # content-shaped like the policy block above, not an outage.
     if "did not return usable clips" in e or "clip detection failed" in e:
         return "no clips found (user video)"
-    if "gemini" in e or "google.genai" in e:
+    if "gemini" in e or "google.genai" in e or "openai api" in e:
         return "gemini"
     if "ffmpeg" in e or "reframe" in e:
         return "ffmpeg/render"
