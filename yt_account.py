@@ -40,15 +40,44 @@ import contextlib
 try:
     import fcntl
 except ImportError:
-    class _FcntlShim:
-        LOCK_EX = 1
-        LOCK_SH = 2
-        LOCK_NB = 4
-        LOCK_UN = 8
-        @staticmethod
-        def flock(fd, op):
-            pass
-    fcntl = _FcntlShim()
+    try:
+        import msvcrt
+
+        class _FcntlShim:
+            LOCK_EX = 1
+            LOCK_SH = 2
+            LOCK_NB = 4
+            LOCK_UN = 8
+
+            @staticmethod
+            def flock(fd, op):
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                except OSError:
+                    pass
+                if op & 8:  # LOCK_UN
+                    try:
+                        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+                elif op & 4:  # LOCK_NB
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                else:
+                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+
+        fcntl = _FcntlShim()
+    except ImportError:
+        class _FcntlShim:
+            LOCK_EX = 1
+            LOCK_SH = 2
+            LOCK_NB = 4
+            LOCK_UN = 8
+
+            @staticmethod
+            def flock(fd, op):
+                pass
+
+        fcntl = _FcntlShim()
 import json
 import os
 import tempfile
@@ -104,12 +133,27 @@ _STRIKES_FILE = ".yt-account.strikes"
 _PACE_FILE = ".yt-account.pace"
 _SLOT_FILE = ".yt-account-{}.lock"
 _MARKERS = ("rate-limited by youtube", "rate limited by youtube")
+_COOKIE_INVALID_MARKERS = (
+    "the provided youtube account cookies are no longer valid",
+    "cookies are no longer valid",
+    "sign in to confirm you’re not a bot",
+    "sign in to confirm you're not a bot",
+    "use --cookies-from-browser",
+    "use --cookies for the authentication",
+    "login_required",
+)
 
 
 def is_rate_limit(text) -> bool:
     """Whether an error text is YouTube limiting the account (not the video)."""
     t = str(text or "").lower()
     return any(m in t for m in _MARKERS)
+
+
+def is_cookie_invalid(text) -> bool:
+    """Whether YouTube or yt-dlp reported that the account cookies are invalid, expired, or rotated."""
+    t = str(text or "").lower()
+    return any(m in t for m in _COOKIE_INVALID_MARKERS)
 
 
 def state_dir():
@@ -278,6 +322,60 @@ def request(account=0):
 
 # --- several accounts ------------------------------------------------------
 
+def normalize_cookie_text(text: str) -> str:
+    """Normalize raw cookie text from env into valid Netscape format."""
+    if not text:
+        return ""
+    text = text.strip()
+    if text.startswith(("'", '"')) and text.endswith(("'", '"')):
+        text = text[1:-1].strip()
+    if text.startswith("base64:"):
+        try:
+            import base64
+            text = base64.b64decode(text[7:].strip()).decode("utf-8", "replace").strip()
+        except Exception:
+            pass
+    if os.path.isfile(text):
+        try:
+            with open(text, "r", encoding="utf-8") as f:
+                text = f.read().strip()
+        except OSError:
+            pass
+
+    # Normalize CRLF and backslash escapes
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if "\\n" in text and "\n" not in text:
+        text = text.replace("\\n", "\n")
+    if "\\t" in text:
+        text = text.replace("\\t", "\t")
+
+    lines = []
+    has_header = False
+    for line in text.split("\n"):
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+        if line_clean.startswith("# Netscape") or line_clean.startswith("# HTTP Cookie File"):
+            has_header = True
+            lines.append(line_clean)
+            continue
+        if line_clean.startswith("#"):
+            lines.append(line_clean)
+            continue
+        # Convert space-separated columns into tab-separated Netscape columns if needed
+        if "\t" not in line_clean:
+            parts = line_clean.split()
+            # Netscape format: domain, flag, path, secure, expiry, name, value
+            if len(parts) >= 7 and parts[1].upper() in ("TRUE", "FALSE") and parts[3].upper() in ("TRUE", "FALSE"):
+                line_clean = "\t".join(parts[:6] + [" ".join(parts[6:])])
+        lines.append(line_clean)
+
+    result = "\n".join(lines).strip()
+    if result and not has_header:
+        result = "# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file! Do not edit.\n\n" + result
+    return (result + "\n") if result else ""
+
+
 def accounts(env=None):
     """The cookie files configured, in order: YOUTUBE_COOKIES, then
     YOUTUBE_COOKIES_2 .. _9. Empty ones are skipped.
@@ -286,28 +384,12 @@ def accounts(env=None):
     names = ["YOUTUBE_COOKIES"] + [f"YOUTUBE_COOKIES_{i}" for i in range(2, MAX_ACCOUNTS + 1)]
     out = []
     for name in names:
-        text = str(env.get(name) or "").strip()
-        if not text:
+        val = env.get(name)
+        if not val:
             continue
-        if text.startswith(("'", '"')) and text.endswith(("'", '"')):
-            text = text[1:-1].strip()
-        if text.startswith("base64:"):
-            try:
-                import base64
-                text = base64.b64decode(text[7:].strip()).decode("utf-8", "replace").strip()
-            except Exception:
-                pass
-        if os.path.isfile(text):
-            try:
-                with open(text, "r", encoding="utf-8") as f:
-                    text = f.read().strip()
-            except OSError:
-                pass
-        # Unescape literal \n and \t if env parser stored them with backslash escapes
-        if "\\n" in text and "\n" not in text:
-            text = text.replace("\\n", "\n").replace("\\t", "\t")
-        if text:
-            out.append(text + "\n")
+        normalized = normalize_cookie_text(str(val))
+        if normalized:
+            out.append(normalized)
     return out
 
 
@@ -504,6 +586,15 @@ class Session:
         if self._use(pick(exclude=self._tried, awake_only=True, count=len(self._texts))):
             return True
         self.answers += 1
+        return False
+
+    def mark_invalid(self) -> bool:
+        """The account cookies were rejected as expired, rotated, or invalid.
+        Rotates to another available account if one exists; otherwise clears the cookie
+        path so subsequent attempts continue anonymously instead of sending poisoned cookies."""
+        if self._use(pick(exclude=self._tried, awake_only=True, count=len(self._texts))):
+            return True
+        self.close()
         return False
 
     def close(self):

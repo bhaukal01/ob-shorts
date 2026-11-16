@@ -1250,11 +1250,18 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                                     "paid": proxy is not None and proxy == _proxy,
                                     "error": str(e)[:300]})
                 print(f"⚠️  Download attempt '{label}' failed: {str(e)[:200]}")
-                if cookies and yt_account.is_rate_limit(str(e)):
-                    account_limited = True
-                    if yt_session.limited():
-                        print(f"🔁 Moving this video to YouTube account "
-                              f"{yt_session.account + 1}.")
+                if cookies and (yt_account.is_rate_limit(str(e)) or yt_account.is_cookie_invalid(str(e))):
+                    if yt_account.is_cookie_invalid(str(e)):
+                        print("⚠️ The provided YouTube cookies appear expired, rotated, or invalid.")
+                        if yt_session.mark_invalid():
+                            print(f"🔁 Switched to backup YouTube account {yt_session.account + 1}.")
+                        else:
+                            print("ℹ️ No additional YouTube accounts; subsequent attempts will proceed anonymously.")
+                    elif yt_account.is_rate_limit(str(e)):
+                        account_limited = True
+                        if yt_session.limited():
+                            print(f"🔁 Moving this video to YouTube account "
+                                  f"{yt_session.account + 1}.")
                     break       # not again on this route; the next one may differ
                 retryable = '403' in str(e) or 'Forbidden' in str(e)
                 if not retryable or retry == 1:
@@ -1266,6 +1273,44 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
         # cannot change that, so stop instead of spending every attempt.
         if last_err is not None and _content_block(str(last_err)):
             break
+
+    # If all planned attempts failed and it's not an explicit content block:
+    # Attempt an emergency rescue via mobile client (android, mweb).
+    # YouTube's datacenter IP bot detection targets desktop web clients (web, tv_samsung, visionos)
+    # when cookies are missing or invalid, but the mobile Android client is exempt.
+    if sanitized_title is None and not (last_err is not None and _content_block(str(last_err))):
+        print("🚨 Standard download strategies failed or were blocked. Attempting emergency rescue via mobile client (android)...")
+        rescue_args = {
+            **(_bgutil_script and {'youtubepot-bgutilscript': {'script_path': [_bgutil_script]}} or {}),
+            **(_bgutil_http and {'youtubepot-bgutilhttp': {'base_url': [_bgutil_http]}} or {}),
+            'youtube': {'player_client': ['android', 'mweb', 'web']},
+        }
+        rescue_fmt = (
+            'bestvideo[vcodec^=avc1][height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
+            'bestvideo[height<=1080]+bestaudio/'
+            'best[height<=1080][ext=mp4]/best[ext=mp4]/best'
+        )
+        rescue_proxies = [None]
+        if _proxy and _proxy not in rescue_proxies:
+            rescue_proxies.append(_proxy)
+        for r_proxy in rescue_proxies:
+            try:
+                print(f"📥 Emergency rescue attempt" + (" (via proxy)" if r_proxy else " (direct)"))
+                sanitized_title = _attempt(rescue_args, rescue_fmt, r_proxy, cookies=False)
+                if sanitized_title is not None:
+                    print("✅ Emergency rescue succeeded! Video downloaded via mobile client.")
+                    attempt_log.append({"label": "rescue-mobile", "ok": True,
+                                        "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
+                                        "paid": r_proxy is not None and r_proxy == _proxy})
+                    last_err = None
+                    account_limited = False
+                    break
+            except Exception as e_rescue:
+                print(f"⚠️ Emergency rescue attempt failed: {str(e_rescue)[:200]}")
+                attempt_log.append({"label": "rescue-mobile", "ok": False,
+                                    "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
+                                    "paid": r_proxy is not None and r_proxy == _proxy,
+                                    "error": str(e_rescue)[:300]})
 
     if sanitized_title is None and isinstance(route_out, dict):
         # A failed download still paid for its proxied attempts.
@@ -1286,12 +1331,28 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
 
     if sanitized_title is None:
         import sys
+        is_cookie_err = last_err is not None and yt_account.is_cookie_invalid(str(last_err))
+        cookie_diag = ""
+        if is_cookie_err:
+            cookie_diag = """
+🔍 ROOT CAUSE: YouTube Session Cookies Expired or Rotated
+The cookies provided in YOUTUBE_COOKIES are no longer recognized by YouTube.
+Google periodically rotates session keys, especially if you logged out or continued
+browsing on the same session.
+
+👉 HOW TO FIX YOUTUBE COOKIES:
+1. Open a fresh Incognito / Private browser window.
+2. Go to https://www.youtube.com and sign in with your account.
+3. Export cookies using 'Get cookies.txt LOCALLY' extension (Netscape format).
+4. Close the Incognito window WITHOUT clicking 'Sign Out'.
+5. Paste the cookie text into YOUTUBE_COOKIES in .env (or app Settings) and restart.
+"""
         error_msg = f"""
 ❌ ================================================================= ❌
 ❌ FATAL ERROR: YOUTUBE DOWNLOAD FAILED (all strategies)
 ❌ ================================================================= ❌
-REASON: YouTube blocked the request or the download tooling is out of date.
-👇 SOLUTION FOR USER: download the video manually and use the 'Upload Video' tab.
+REASON: YouTube blocked the request or the session cookies are invalid.{cookie_diag}
+👇 ALTERNATIVE: Download the video file manually and upload via 'Clip Studio' -> Upload Video.
 Technical Details: {str(last_err)}
 """
         print(error_msg, file=sys.stdout)
