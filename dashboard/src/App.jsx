@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film, Scissors, Flame } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import ResultCard from './components/ResultCard';
@@ -259,6 +259,176 @@ const pollJob = async (jobId) => {
   return res.json();
 };
 
+const getLogCardStyle = (logText = '') => {
+  const text = String(logText || '').toLowerCase();
+
+  if (text.includes('viral moment') || text.includes('highlight') || text.includes('🔥') || text.includes('hook:')) {
+    return {
+      Icon: Flame,
+      iconColor: 'text-amber-400',
+      category: 'Viral Highlight',
+      categoryClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+      timeBadgeClass: 'bg-amber-400/15 text-amber-200 border border-amber-400/25',
+      containerClass: 'bg-amber-500/10 border-amber-500/35 hover:border-amber-500/50 shadow-xs',
+      textClass: 'text-amber-100 font-semibold',
+    };
+  }
+
+  if (text.includes('step 1') || text.includes('cutting') || text.includes('✂️')) {
+    return {
+      Icon: Scissors,
+      iconColor: 'text-blue-400',
+      category: 'Step 1 · Cut',
+      categoryClass: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+      timeBadgeClass: 'bg-blue-400/15 text-blue-200 border border-blue-400/25',
+      containerClass: 'bg-blue-500/10 border-blue-500/30 hover:border-blue-500/40',
+      textClass: 'text-blue-100',
+    };
+  }
+
+  if (text.includes('step 2') || text.includes('reframing') || text.includes('📐') || text.includes('vertical')) {
+    return {
+      Icon: Smartphone,
+      iconColor: 'text-emerald-400',
+      category: 'Step 2 · Reframe',
+      categoryClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+      timeBadgeClass: 'bg-emerald-400/15 text-emerald-200 border border-emerald-400/25',
+      containerClass: 'bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/40',
+      textClass: 'text-emerald-100',
+    };
+  }
+
+  if (text.includes('step 3') || text.includes('subtitle') || text.includes('transliterat') || text.includes('hinglish') || text.includes('📝') || text.includes('🔤')) {
+    return {
+      Icon: Globe,
+      iconColor: 'text-cyan-400',
+      category: 'Step 3 · Subtitles',
+      categoryClass: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
+      timeBadgeClass: 'bg-cyan-400/15 text-cyan-200 border border-cyan-400/25',
+      containerClass: 'bg-cyan-500/10 border-cyan-500/30 hover:border-cyan-500/40',
+      textClass: 'text-cyan-100',
+    };
+  }
+
+  if (text.includes('step 4') || text.includes('uploading') || text.includes('s3') || text.includes('☁️')) {
+    return {
+      Icon: Server,
+      iconColor: 'text-sky-400',
+      category: 'Step 4 · Cloud S3',
+      categoryClass: 'bg-sky-500/20 text-sky-300 border border-sky-500/30',
+      timeBadgeClass: 'bg-sky-400/15 text-sky-200 border border-sky-400/25',
+      containerClass: 'bg-sky-500/10 border-sky-500/30 hover:border-sky-500/40',
+      textClass: 'text-sky-100',
+    };
+  }
+
+  if (text.includes('clip ready') || text.includes('published:') || text.includes('✅') || text.includes('✨') || text.includes('🎉')) {
+    return {
+      Icon: CheckCircle2,
+      iconColor: 'text-emerald-400',
+      category: 'Clip Ready',
+      categoryClass: 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/40',
+      timeBadgeClass: 'bg-emerald-400/20 text-emerald-100 border border-emerald-400/30',
+      containerClass: 'bg-emerald-500/15 border-emerald-500/45 hover:border-emerald-500/60 shadow-xs',
+      textClass: 'text-emerald-100 font-semibold',
+    };
+  }
+
+  if (text.includes('auto-posting') || text.includes('🚀') || text.includes('linked social')) {
+    return {
+      Icon: Rocket,
+      iconColor: 'text-purple-400',
+      category: 'Auto-Post',
+      categoryClass: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+      timeBadgeClass: 'bg-purple-400/15 text-purple-200 border border-purple-400/25',
+      containerClass: 'bg-purple-500/10 border-purple-500/30 hover:border-purple-500/40',
+      textClass: 'text-purple-100',
+    };
+  }
+
+  if (text.includes('transcribing') || text.includes('whisper') || text.includes('transcribed') || text.includes('🎙️') || text.includes('🧠') || text.includes('analyzing viral')) {
+    return {
+      Icon: Mic,
+      iconColor: 'text-violet-400',
+      category: 'Speech & AI',
+      categoryClass: 'bg-violet-500/20 text-violet-300 border border-violet-500/30',
+      timeBadgeClass: 'bg-violet-400/15 text-violet-200 border border-violet-400/25',
+      containerClass: 'bg-violet-500/10 border-violet-500/30 hover:border-violet-500/40',
+      textClass: 'text-violet-100',
+    };
+  }
+
+  if (text.includes('recording') || text.includes('captured') || text.includes('capturing') || text.includes('📥') || text.includes('⚙️') || text.includes('🔴')) {
+    return {
+      Icon: Radio,
+      iconColor: 'text-rose-400',
+      category: 'Stream Ingest',
+      categoryClass: 'bg-rose-500/20 text-rose-300 border border-rose-500/30',
+      timeBadgeClass: 'bg-rose-400/15 text-rose-200 border border-rose-400/25',
+      containerClass: 'bg-rose-500/10 border-rose-500/30 hover:border-rose-500/40',
+      textClass: 'text-rose-100',
+    };
+  }
+
+  if (text.includes('error') || text.includes('failed') || text.includes('⚠️')) {
+    return {
+      Icon: AlertTriangle,
+      iconColor: 'text-red-400',
+      category: 'Notice / Warning',
+      categoryClass: 'bg-red-500/25 text-red-300 border border-red-500/40',
+      timeBadgeClass: 'bg-red-400/20 text-red-200 border border-red-400/30',
+      containerClass: 'bg-red-500/15 border-red-500/45 hover:border-red-500/60',
+      textClass: 'text-red-200 font-medium',
+    };
+  }
+
+  if (text.includes('deleted') || text.includes('freed') || text.includes('cleanup') || text.includes('🧹') || text.includes('saving cpu')) {
+    return {
+      Icon: HardDrive,
+      iconColor: 'text-muted',
+      category: 'Disk Cleanup',
+      categoryClass: 'bg-paper3 text-muted border border-rule',
+      timeBadgeClass: 'bg-paper2 text-muted border border-rule/50',
+      containerClass: 'bg-paper2/50 border-rule hover:border-rule/80',
+      textClass: 'text-muted',
+    };
+  }
+
+  if (text.includes('enqueued') || text.includes('queue') || text.includes('sequential') || text.includes('⏳') || text.includes('🎬')) {
+    return {
+      Icon: Film,
+      iconColor: 'text-amber-400',
+      category: 'Render Queue',
+      categoryClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/20',
+      timeBadgeClass: 'bg-amber-400/15 text-amber-200 border border-amber-400/20',
+      containerClass: 'bg-paper3 border-rule hover:border-amber-500/30',
+      textClass: 'text-ink2',
+    };
+  }
+
+  if (text.includes('completed') || text.includes('🏁') || text.includes('all queued clips rendered')) {
+    return {
+      Icon: CheckCircle2,
+      iconColor: 'text-emerald-400',
+      category: 'Project Complete',
+      categoryClass: 'bg-emerald-500/30 text-emerald-200 border border-emerald-500/50',
+      timeBadgeClass: 'bg-emerald-400/20 text-emerald-100 border border-emerald-400/35',
+      containerClass: 'bg-emerald-500/20 border-emerald-500/50 shadow-sm',
+      textClass: 'text-emerald-100 font-bold',
+    };
+  }
+
+  return {
+    Icon: Activity,
+    iconColor: 'text-sky-400',
+    category: 'System',
+    categoryClass: 'bg-paper3 text-muted border border-rule',
+    timeBadgeClass: 'bg-paper2 text-muted border border-rule/50',
+    containerClass: 'bg-paper2/60 border-rule hover:border-rule/80',
+    textClass: 'text-ink2',
+  };
+};
+
 function App() {
   // Cloud auth/billing session (inert when billing is disabled).
   const { billingEnabled, isManaged, isSignedIn, me, plan, refreshMe, jobRetentionSeconds, localLlm, loading: authLoading } = useAuth();
@@ -481,6 +651,8 @@ function App() {
   const [logs, setLogs] = useState([]);
   // When each server log line arrived (epoch s, parallel to logs), from /api/status.
   const [logTimes, setLogTimes] = useState([]);
+  const [projectTitle, setProjectTitle] = useState('');
+  const logsEndRef = useRef(null);
   // Collapsed on phones: the log tail is the least useful thing on a 360px
   // screen and it was pushing the actual clips a full scroll down.
   const [logsVisible, setLogsVisible] = useState(() => {
@@ -525,6 +697,12 @@ function App() {
   const handleClipPause = () => {
     setIsSyncedPlaying(false);
   };
+
+  useEffect(() => {
+    if (activeTab === 'dashboard' && (status === 'processing' || status === 'complete')) {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs.length, activeTab, status]);
 
   // --- Project persistence (paid mode) ---
   // Debounced sync of each clip's browser-only edit state (Remotion layers +
@@ -679,6 +857,8 @@ function App() {
     setResults(data.result || null);
     setProcessingMedia(null);
     setQualityGate(null);
+    if (data.title) setProjectTitle(data.title);
+    else if (data.result?.video_title || data.result?.title) setProjectTitle(data.result?.video_title || data.result?.title);
 
     const isLive = (data.status === 'processing' || data.status === 'queued' || projectStatus === 'processing' || projectStatus === 'queued');
     if (isLive) {
@@ -688,7 +868,7 @@ function App() {
     } else {
       setStatus('complete');
       setLogs(data.logs?.length ? data.logs : ['♻️ Project restored from your library.']);
-      setLogTimes([Date.now() / 1000]);
+      setLogTimes(data.log_times?.length ? data.log_times : [Date.now() / 1000]);
     }
     setActiveTab('dashboard');
   };
@@ -1214,11 +1394,15 @@ function App() {
           if (data.result) {
             setResults(data.result);
           }
+          if (data.title) setProjectTitle(data.title);
+          else if (data.result?.video_title || data.result?.title) setProjectTitle(data.result?.video_title || data.result?.title);
 
           if (data.partial) setPartialJob(data.partial);
           setQueueInfo(data.status === 'queued' && data.queue ? data.queue : null);
 
           if (data.status === 'completed') {
+            if (data.logs) setLogs(data.logs);
+            if (data.log_times) setLogTimes(data.log_times);
             setQueueInfo(null);
             setStatus('complete');
             clearInterval(interval);
@@ -1527,6 +1711,7 @@ function App() {
     setLogs(["Starting process..."]);
     setLogTimes([Date.now() / 1000]);
     setResults(null);
+    setProjectTitle(data.title || data.file?.name || data.url || 'New Project');
     // Studio handovers have no local media object; the preview switches to the
     // backend-served source once the job id is known.
     setProcessingMedia(data.type === 'thumbnail_session' ? null : data);
@@ -1698,6 +1883,7 @@ function App() {
     setStatus('idle');
     setJobId(null);
     setResults(null);
+    setProjectTitle('');
     setLogs([]);
     setLogTimes([]);
     setProcessingMedia(null);
@@ -3141,235 +3327,271 @@ function App() {
             </div>
           )}
 
-          {/* View: Processing / Results (Split View) */}
+          {/* View: Processing / Results (Unified 2-Page Workspace) */}
           {activeTab === 'dashboard' && (status === 'processing' || status === 'complete' || status === 'error') && (
-            <div className="h-full flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 overflow-y-auto md:overflow-y-hidden custom-scrollbar animate-fade">
+            <div className="h-full flex flex-col overflow-hidden animate-fade">
 
-              {/* Left Panel: Preview & Status */}
-              <div className={`${status === 'complete' ? 'w-full md:w-[30%] lg:w-[25%]' : 'w-full md:w-[55%] lg:w-[60%]'} md:h-full flex flex-col shrink-0 md:shrink card p-3.5 sm:p-6 md:overflow-y-auto custom-scrollbar transition-all duration-700 ease-in-out`}>
-                <div className="mb-4 sm:mb-6 flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-medium text-ink lowercase flex items-center gap-2">
-                    <Activity className={`text-brass ${status === 'processing' ? 'animate-pulse' : ''}`} size={18} />
-                    Live Analysis
-                  </h2>
-                  <span className={status === 'processing' ? 'badge-brass' :
-                    status === 'complete' ? 'badge-ok' :
-                      'badge-danger'
-                    }>
-                    {status.toUpperCase()}
-                  </span>
-                </div>
-
-                {/* Trimmed run: say it while it renders, not only once the
-                    clips land, so the shorter result is no surprise. */}
-                {status === 'processing' && partialJob && !partialJob.chosen && plan === 'free' && isManaged && (
-                  <button
-                    onClick={() => openUpsell({ source: 'partial_processing', partialJob })}
-                    className="mb-4 w-full text-left rounded-card border border-brass/40 bg-brass/5 px-4 py-3 text-sm hover:border-brass transition-colors"
-                  >
-                    <span className="text-ink">Clipping the first {partialJob.processed_minutes} of {partialJob.total_minutes} minutes with your free minutes.</span>{' '}
-                    <span className="text-brass font-medium">Clip the whole video →</span>
-                  </button>
-                )}
-
-                {/* Waiting in line: say where and for how long, and that paid
-                    plans go first (they do: plan priority in the job queue). */}
-                {status === 'processing' && queueInfo && (
-                  <div className="mb-4 rounded-card border border-brass/40 bg-brass/5 px-4 py-3 text-sm">
-                    <p className="text-ink">
-                      {queueInfo.ahead === 0
-                        ? 'You are next in line. Starting in a moment…'
-                        : <>You are <b>#{queueInfo.position}</b> in line · {queueInfo.eta_is_minimum ? 'at least' : 'about'} <b>{Math.max(1, Math.round(queueInfo.eta_seconds / 60))} min</b></>}
-                    </p>
-                    {queueSlow ? (
-                      /* The free queue is saturated and this video is far
-                         back in it: later arrivals can still pass it
-                         (eta_is_minimum), so the wait is hours, not minutes.
-                         Said here, when it is this user's wait, with the one
-                         thing that changes it. All of it is how the queue
-                         works: plan priority, and paying re-keys the video
-                         already in line. */
-                      <>
-                        <p className="mt-1 text-muted">
-                          High demand right now: free videos wait behind paid ones and this can take hours.
-                          We are adding capacity.
-                        </p>
-                        <button
-                          onClick={() => { track('QueueUpsellClick', { props: { position: String(queueInfo.position), slow: '1' } }); if (isManaged) openUpsell({ source: 'queue' }); else setShowPlanChoice(true); }}
-                          className="btn-primary mt-3"
-                        >
-                          Skip the line with a plan
-                        </button>
-                        <p className="mt-2 text-xs text-muted">
-                          Paid videos are usually ready in minutes, and this one moves to the front as soon as you subscribe.
-                        </p>
-                      </>
-                    ) : billingEnabled && !['starter', 'creator', 'pro'].includes(plan) && queueInfo.ahead > 0 && (
-                      <button
-                        onClick={() => { track('QueueUpsellClick', { props: { position: String(queueInfo.position) } }); if (isManaged) openUpsell({ source: 'queue' }); else setShowPlanChoice(true); }}
-                        className="mt-2 text-xs lowercase text-brass hover:underline"
-                      >
-                        paid plans skip the line →
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Video Preview */}
-                {processingMedia && (
-                  <ProcessingAnimation
-                    media={processingMedia}
-                    isComplete={status === 'complete'}
-                    syncedTime={syncedTime}
-                    isSyncedPlaying={isSyncedPlaying}
-                    syncTrigger={syncTrigger}
-                  />
-                )}
-
-                {/* Phones only. The scan box drops its invented telemetry at
-                    this size and the log terminal below starts collapsed, so
-                    without this the screen would say nothing about what the job
-                    is actually doing. The log tail is the real answer. */}
-                {status === 'processing' && (
-                  <div className="sm:hidden mb-3 flex items-start gap-2 text-xs text-ink2 min-w-0">
-                    <Loader2 size={14} className="animate-spin text-brass shrink-0 mt-px" />
-                    <span className="min-w-0 leading-snug break-words">
-                      {logs.length ? logs[logs.length - 1] : 'starting up…'}
-                    </span>
-                  </div>
-                )}
-
-                {/* Logs Terminal */}
-                <div className={`bg-paper rounded-card border border-rule overflow-hidden flex flex-col transition-all duration-500 ${status === 'complete' ? `min-h-0 opacity-50 hover:opacity-100 ${logsVisible ? 'h-32' : 'h-auto'}` : `flex-1 ${logsVisible ? 'min-h-[160px] sm:min-h-[200px]' : 'min-h-0 flex-none'}`}`}>
-                  <button
-                    type="button"
-                    onClick={() => setLogsVisible(!logsVisible)}
-                    aria-expanded={logsVisible}
-                    className="w-full px-3.5 sm:px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-paper2 shrink-0 text-left"
-                  >
-                    <span className="readout flex items-center gap-2">
-                      <Terminal size={12} /> System Logs
-                    </span>
-                    <span className="flex items-center gap-2 text-muted">
-                      {!logsVisible && logs.length > 0 && (
-                        <span className="readout normal-case">{logs.length}</span>
-                      )}
-                      <ChevronDown size={16} className={logsVisible ? '' : 'rotate-180'} />
-                    </span>
-                  </button>
-                  {logsVisible && (
-                    <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto font-mono text-[11px] sm:text-xs space-y-1.5 custom-scrollbar text-muted break-words">
-                      {logs.length > 250 && (
-                        <div className="text-[10px] text-muted italic border-b border-rule pb-1 mb-1">
-                          Showing latest 250 logs ({logs.length - 250} older entries hidden for performance)...
-                        </div>
-                      )}
-                      {(logs.length > 250 ? logs.slice(-250) : logs).map((log, sliceIdx) => {
-                        const originalIdx = logs.length > 250 ? logs.length - 250 + sliceIdx : sliceIdx;
-                        return (
-                          <div key={originalIdx} className={`flex gap-2 ${log.toLowerCase().includes('error') ? 'text-danger' : 'text-muted'}`}>
-                            <span className="text-muted opacity-50 shrink-0 hidden sm:inline tabular-nums">
-                              {logTimes[originalIdx] ? new Date(logTimes[originalIdx] * 1000).toLocaleTimeString() : ''}
-                            </span>
-                            <span className="min-w-0 break-words">{log}</span>
-                          </div>
-                        );
-                      })}
-                      {status === 'processing' && (
-                        <div className="animate-pulse text-brass">_</div>
-                      )}
+              {/* Project Top Navigation & Context Bar */}
+              <div className="px-3 md:px-4 pt-3 pb-2 shrink-0">
+                <div className="card px-3.5 py-2.5 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3 bg-paper2/80 border border-rule">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => goToTab('history')}
+                      className="btn-ghost p-1.5 text-xs text-muted hover:text-ink shrink-0 flex items-center gap-1"
+                      title="Back to Project Library"
+                    >
+                      <RotateCcw size={14} />
+                      <span className="hidden sm:inline text-xs">Library</span>
+                    </button>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] uppercase font-mono tracking-wider font-semibold text-muted">
+                          {jobId ? `Job #${jobId.slice(0, 8)}` : 'Project'}
+                        </span>
+                        <span className={`tag-uniform text-[10px] ${
+                          status === 'processing'
+                            ? 'tag-active'
+                            : status === 'complete'
+                            ? 'tag-connected'
+                            : 'tag-error'
+                        }`}>
+                          {status === 'processing' ? 'Processing' : status === 'complete' ? 'Complete' : 'Failed'}
+                        </span>
+                      </div>
+                      <h1 className="text-sm sm:text-base font-bold text-ink truncate max-w-xl">
+                        {projectTitle || results?.video_title || results?.title || 'ClipSnipr Project'}
+                      </h1>
                     </div>
-                  )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      className="btn-primary px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+                    >
+                      <Plus size={14} />
+                      <span>New Project</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Right Panel: Results Grid */}
-              <div className={`${status === 'complete' ? 'w-full md:w-[70%] lg:w-[75%]' : 'w-full md:w-[45%] lg:w-[40%]'} md:h-full flex flex-col shrink-0 md:shrink card p-3.5 sm:p-6 transition-all duration-700 ease-in-out`}>
-                {/* Title + counters on one row, the two actions on their own row
-                    below. Wrapping them all together dropped a lone half-width
-                    "schedule week" pill under the title on a phone. */}
-                <div className="mb-4 sm:mb-6 shrink-0 space-y-3">
-                  <h2 className="font-bold text-lg sm:text-xl text-ink flex flex-wrap items-center gap-2">
-                    <span className="mr-auto">Generated Shorts</span>
-                    {results?.clips?.length > 0 && (
-                      <span className="readout bg-paper3 px-2.5 py-1 rounded-md">
-                        {results.clips.length} Clips
+              {/* 2-Page Split Layout: Left Page for Activity Logs, Right Page for Clips */}
+              <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 pt-0 overflow-y-auto md:overflow-y-hidden custom-scrollbar">
+
+                {/* Left Page: Pipeline Activity Logs (Text in Boxes with Colored Timestamps) */}
+                <div className="w-full md:w-[42%] lg:w-[40%] md:h-full flex flex-col shrink-0 card p-0 overflow-hidden border border-rule bg-paper">
+                  
+                  {/* Left Page Header */}
+                  <div className="p-3.5 sm:p-4 border-b border-rule bg-paper2 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${status === 'processing' ? 'bg-amber-400 animate-pulse' : status === 'complete' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <h2 className="text-sm font-semibold text-ink flex items-center gap-2 truncate">
+                        <Activity size={16} className="text-brandblue shrink-0" />
+                        <span>Pipeline Activity</span>
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-paper3 border border-rule text-muted">
+                        {logs.length} {logs.length === 1 ? 'event' : 'events'}
                       </span>
-                    )}
-                  </h2>
-                  {results?.clips?.length > 0 && status === 'complete' && (
-                    <div className="flex flex-col sm:flex-row sm:justify-end items-stretch sm:items-center gap-2">
+                    </div>
+                  </div>
+
+                  {/* Partial Job or Queue Alert Banners */}
+                  {status === 'processing' && partialJob && !partialJob.chosen && plan === 'free' && isManaged && (
+                    <div className="p-3 border-b border-rule bg-brandblue/5 shrink-0">
                       <button
-                        onClick={handleDownloadAll}
-                        disabled={downloadingAll}
-                        className="btn-ghost px-3 py-2 text-xs"
-                        title="Download all clips as a ZIP"
+                        onClick={() => openUpsell({ source: 'partial_processing', partialJob })}
+                        className="w-full text-left rounded-card border border-brandblue/30 bg-paper2 px-3 py-2 text-xs hover:border-brandblue transition-colors"
                       >
-                        {downloadingAll
-                          ? <><Loader2 size={14} className="animate-spin" /> Zipping…</>
-                          : <><Download size={14} /> Download All ZIP</>}
+                        <span className="text-ink">Clipping first {partialJob.processed_minutes} of {partialJob.total_minutes} mins on free plan.</span>{' '}
+                        <span className="text-brandblue font-semibold">Clip whole video →</span>
                       </button>
-                      {results.clips.length > 1 && (
-                        <button
-                          onClick={() => setShowScheduleWeek(true)}
-                          className="btn-green px-4 py-2 text-xs font-bold text-white shadow-xs"
-                        >
-                          <Calendar size={14} />
-                          Schedule Week
-                        </button>
-                      )}
                     </div>
                   )}
+
+                  {status === 'processing' && queueInfo && (
+                    <div className="p-3 border-b border-rule bg-paper3 shrink-0">
+                      <div className="rounded-card border border-rule bg-paper2 px-3 py-2 text-xs">
+                        <p className="text-ink font-medium">
+                          {queueInfo.ahead === 0
+                            ? 'You are next in line. Starting in a moment…'
+                            : <>Queue position: <b>#{queueInfo.position}</b> · ETA: ~<b>{Math.max(1, Math.round(queueInfo.eta_seconds / 60))} min</b></>}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Optional Video Player Preview */}
+                  {processingMedia && (
+                    <div className="border-b border-rule bg-paper2/50 p-2 sm:p-3 shrink-0">
+                      <ProcessingAnimation
+                        media={processingMedia}
+                        isComplete={status === 'complete'}
+                        syncedTime={syncedTime}
+                        isSyncedPlaying={isSyncedPlaying}
+                        syncTrigger={syncTrigger}
+                      />
+                    </div>
+                  )}
+
+                  {/* Logs Feed: Styled Boxes / Cards with Colored Timestamps */}
+                  <div className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-2.5 custom-scrollbar min-h-0">
+                    {logs.length === 0 ? (
+                      <div className="h-40 flex flex-col items-center justify-center text-muted text-xs text-center p-4">
+                        <Activity size={24} className="mb-2 opacity-40 text-brandblue" />
+                        <p>No pipeline events recorded yet.</p>
+                      </div>
+                    ) : (
+                      <>
+                        {logs.map((log, idx) => {
+                          const style = getLogCardStyle(log);
+                          const Icon = style.Icon;
+                          const timeVal = logTimes[idx];
+                          const timeStr = timeVal ? new Date(timeVal * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
+
+                          return (
+                            <div
+                              key={idx}
+                              className={`rounded-xl p-3 border transition-all duration-200 ${style.containerClass}`}
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${style.categoryClass}`}>
+                                  <Icon size={11} className={style.iconColor} />
+                                  <span>{style.category}</span>
+                                </span>
+                                {timeStr && (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-medium shrink-0 ${style.timeBadgeClass}`}>
+                                    {timeStr}
+                                  </span>
+                                )}
+                              </div>
+                              <p className={`text-xs leading-relaxed break-words ${style.textClass}`}>
+                                {log}
+                              </p>
+                            </div>
+                          );
+                        })}
+                        {status === 'processing' && (
+                          <div className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 animate-pulse text-xs text-blue-200">
+                            <Loader2 size={13} className="animate-spin text-blue-400 shrink-0" />
+                            <span>Pipeline active — processing audio, detection, and rendering in background...</span>
+                          </div>
+                        )}
+                        <div ref={logsEndRef} />
+                      </>
+                    )}
+                  </div>
+
                 </div>
 
-                {status === 'complete' && results?.clips?.length > 0 && (
-                  <div className="mb-2 space-y-2">
-                    {showAutopilotNudge && (
-                      <div className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-input bg-paper3 border border-rule text-sm">
-                        <div className="flex items-start gap-3 flex-1 min-w-0">
-                          <Rocket size={16} className="text-brass shrink-0 mt-0.5" />
-                          <div className="min-w-0 leading-relaxed">
-                            <span className="text-ink">Want this for every new video, without coming back?</span>{' '}
-                            <span className="text-muted">
-                              Autopilot watches your YouTube channel and clips each new upload on its own
-                              {plan === 'free' ? ', included in every paid plan.' : '.'}
-                            </span>
+                {/* Right Page: Generated Shorts Workspace */}
+                <div className="w-full md:w-[58%] lg:w-[60%] md:h-full flex flex-col shrink-0 card p-0 overflow-hidden border border-rule bg-paper">
+                  
+                  {/* Right Page Header */}
+                  <div className="p-3.5 sm:p-4 border-b border-rule bg-paper2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Film size={16} className="text-brandred shrink-0" />
+                      <h2 className="font-bold text-base text-ink flex items-center gap-2">
+                        <span>Generated Shorts</span>
+                        {results?.clips?.length > 0 && (
+                          <span className="px-2.5 py-0.5 text-xs rounded-full font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            {results.clips.length} {results.clips.length === 1 ? 'Clip' : 'Clips'}
+                          </span>
+                        )}
+                      </h2>
+                    </div>
+
+                    {results?.clips?.length > 0 && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={handleDownloadAll}
+                          disabled={downloadingAll}
+                          className="btn-ghost px-3 py-1.5 text-xs font-medium flex items-center gap-1.5"
+                          title="Download all clips as a ZIP"
+                        >
+                          {downloadingAll
+                            ? <><Loader2 size={13} className="animate-spin text-brandblue" /> <span>Zipping…</span></>
+                            : <><Download size={13} /> <span>Download ZIP</span></>}
+                        </button>
+                        {results.clips.length > 1 && (
+                          <button
+                            onClick={() => setShowScheduleWeek(true)}
+                            className="btn-green px-3 py-1.5 text-xs font-bold text-white shadow-xs flex items-center gap-1.5"
+                          >
+                            <Calendar size={13} />
+                            <span>Schedule Week</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Autopilot and Social Nudges */}
+                  {status === 'complete' && results?.clips?.length > 0 && (
+                    <div className="p-3 border-b border-rule bg-paper3/40 space-y-2 shrink-0">
+                      {showAutopilotNudge && (
+                        <div className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-input bg-paper3 border border-rule text-sm">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <Rocket size={16} className="text-brandblue shrink-0 mt-0.5" />
+                            <div className="min-w-0 leading-relaxed">
+                              <span className="text-ink">Want this for every new video, without coming back?</span>{' '}
+                              <span className="text-muted">
+                                Autopilot watches your YouTube channel and clips each new upload on its own
+                                {plan === 'free' ? ', included in every paid plan.' : '.'}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => dismissAutopilotNudge('AutopilotNudgeDismissed')}
+                              aria-label="dismiss"
+                              className="sm:hidden shrink-0 -m-1 p-1 text-muted hover:text-ink"
+                            >
+                              <X size={16} />
+                            </button>
                           </div>
+                          <button
+                            onClick={() => { dismissAutopilotNudge('AutopilotNudgeClicked'); setActiveTab('autopilot'); }}
+                            className="btn-quiet shrink-0 text-xs py-1.5 px-3 lowercase w-full sm:w-auto"
+                          >
+                            set up autopilot →
+                          </button>
                           <button
                             onClick={() => dismissAutopilotNudge('AutopilotNudgeDismissed')}
                             aria-label="dismiss"
-                            className="sm:hidden shrink-0 -m-1 p-1 text-muted hover:text-ink"
+                            className="hidden sm:block shrink-0 p-1 text-muted hover:text-ink"
                           >
-                            <X size={16} />
+                            <X size={14} />
                           </button>
                         </div>
-                        <button
-                          onClick={() => { dismissAutopilotNudge('AutopilotNudgeClicked'); setActiveTab('autopilot'); }}
-                          className="btn-quiet shrink-0 text-xs py-1.5 px-3 lowercase w-full sm:w-auto"
-                        >
-                          set up autopilot →
-                        </button>
-                        <button
-                          onClick={() => dismissAutopilotNudge('AutopilotNudgeDismissed')}
-                          aria-label="dismiss"
-                          className="hidden sm:block shrink-0 p-1 text-muted hover:text-ink"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    )}
-                    {/* Distribution nudge at the same peak: clips on screen,
-                        publishing them is one connect away. Hidden once any
-                        network is linked or the user dismisses it. */}
-                    {showSocialNudge && (
-                      <div className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-input bg-paper3 border border-rule text-sm">
-                        <div className="flex items-start gap-3 flex-1 min-w-0">
-                          <div className="min-w-0 leading-relaxed">
-                            <span className="text-ink">Publish these clips straight from here.</span>{' '}
-                            <span className="text-muted">Connect your YouTube, TikTok or Instagram once — after that every clip is one click from posted.</span>
+                      )}
+                      {showSocialNudge && (
+                        <div className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-input bg-paper3 border border-rule text-sm">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className="min-w-0 leading-relaxed">
+                              <span className="text-ink">Publish these clips straight from here.</span>{' '}
+                              <span className="text-muted">Connect your YouTube, TikTok or Instagram once — after that every clip is one click from posted.</span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                track('SocialNudgeDismissed');
+                                setSocialNudgeDismissed(true);
+                                try { localStorage.setItem('os_social_nudge_dismissed', '1'); } catch (_) { /* ignore */ }
+                              }}
+                              aria-label="dismiss"
+                              className="sm:hidden shrink-0 -m-1 p-1 text-muted hover:text-ink"
+                            >
+                              <X size={16} />
+                            </button>
                           </div>
-                          {/* On a phone the dismiss X rides the copy, so the CTA
-                              below can run the full width of the card. */}
+                          <button
+                            onClick={() => { track('SocialNudgeConnect'); handleConnectSocials(); }}
+                            className="btn-quiet shrink-0 text-xs py-1.5 px-3 lowercase w-full sm:w-auto"
+                          >
+                            connect socials →
+                          </button>
                           <button
                             onClick={() => {
                               track('SocialNudgeDismissed');
@@ -3377,88 +3599,125 @@ function App() {
                               try { localStorage.setItem('os_social_nudge_dismissed', '1'); } catch (_) { /* ignore */ }
                             }}
                             aria-label="dismiss"
-                            className="sm:hidden shrink-0 -m-1 p-1 text-muted hover:text-ink"
+                            className="hidden sm:block shrink-0 p-1 text-muted hover:text-ink"
                           >
-                            <X size={16} />
+                            <X size={14} />
                           </button>
                         </div>
-                        <button
-                          onClick={() => { track('SocialNudgeConnect'); handleConnectSocials(); }}
-                          className="btn-quiet shrink-0 text-xs py-1.5 px-3 lowercase w-full sm:w-auto"
-                        >
-                          connect socials →
-                        </button>
-                        <button
-                          onClick={() => {
-                            track('SocialNudgeDismissed');
-                            setSocialNudgeDismissed(true);
-                            try { localStorage.setItem('os_social_nudge_dismissed', '1'); } catch (_) { /* ignore */ }
-                          }}
-                          aria-label="dismiss"
-                          className="hidden sm:block shrink-0 p-1 text-muted hover:text-ink"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    )}
-                    {/* Self-host only: cloud archives clips to the video library,
-                        here they really are gone once the retention sweep runs. */}
-                    {!billingEnabled && jobRetentionSeconds > 0 && (
-                      <div className="px-3 py-2.5 rounded-input bg-paper3 border border-paper3 text-sm">
-                        <span className="text-ink">Clips are kept for {formatRetention(jobRetentionSeconds)}, then deleted.</span>{' '}
-                        <span className="text-muted">Download what you want to keep, or raise JOB_RETENTION_SECONDS in your env.</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-1">
-                  {results && results.clips && results.clips.length > 0 ? (
-                    <div className={`grid gap-4 pb-10 ${status === 'complete' ? 'grid-cols-[repeat(auto-fill,minmax(min(100%,600px),1fr))]' : 'grid-cols-1'}`}>
-                      {rankedClips.map(({ clip, index: i }) => (
-                        <ResultCard
-                          key={`${jobId}-${i}-${clip.video_url || ''}`}
-                          clip={clip}
-                          index={i}
-                          jobId={jobId}
-                          onEditClip={(index) => setEditingClip(index)}
-                          onReframeClip={(index) => setReframingClip(index)}
-                          onUpgrade={isManaged ? openUpsell : null}
-                          initialState={projectState?.clips?.find((c) => c.index === i) || null}
-                          onStateChange={handleClipStateChange}
-                          durable={durableClips[i]}
-                          uploadPostKey={uploadPostKey}
-                          uploadUserId={uploadUserId}
-                          geminiApiKey={apiKey}
-                                                    isManaged={isManaged}
-                          connectedPlatforms={(userProfiles.find((p) => p.username === uploadUserId) || userProfiles[0])?.connected ?? null}
-                          onConnectSocials={isManaged ? handleConnectSocials : null}
-                          onPlay={(time) => handleClipPlay(time)}
-                          onPause={handleClipPause}
-                          onBulkSubtitle={handleBulkSubtitles}
-                          clipCount={results.clips.length}
-                          bulkProgress={bulkSub}
-                        />
-                      ))}
+                      )}
+                      {!billingEnabled && jobRetentionSeconds > 0 && (
+                        <div className="px-3 py-2.5 rounded-input bg-paper3 border border-paper3 text-sm">
+                          <span className="text-ink">Clips are kept for {formatRetention(jobRetentionSeconds)}, then deleted.</span>{' '}
+                          <span className="text-muted">Download what you want to keep, or raise JOB_RETENTION_SECONDS in your env.</span>
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    status === 'processing' ? (
-                      <div className="h-full min-h-[140px] flex flex-col items-center justify-center text-muted space-y-3 text-center px-4">
-                        <Loader2 size={28} className="animate-spin text-brass" />
-                        <p className="text-sm lowercase">Waiting for clips...</p>
-                        <p className="text-xs text-muted/80 max-w-[26ch] leading-snug">
-                          They appear here one by one as each finishes rendering.
-                        </p>
+                  )}
+
+                  {/* Shorts Content Grid or Meaningful Empty State */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-5 min-h-0">
+                    {results && results.clips && results.clips.length > 0 ? (
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-10">
+                        {rankedClips.map(({ clip, index: i }) => (
+                          <ResultCard
+                            key={`${jobId}-${i}-${clip.video_url || ''}`}
+                            clip={clip}
+                            index={i}
+                            jobId={jobId}
+                            onEditClip={(index) => setEditingClip(index)}
+                            onReframeClip={(index) => setReframingClip(index)}
+                            onUpgrade={isManaged ? openUpsell : null}
+                            initialState={projectState?.clips?.find((c) => c.index === i) || null}
+                            onStateChange={handleClipStateChange}
+                            durable={durableClips[i]}
+                            uploadPostKey={uploadPostKey}
+                            uploadUserId={uploadUserId}
+                            geminiApiKey={apiKey}
+                            isManaged={isManaged}
+                            connectedPlatforms={(userProfiles.find((p) => p.username === uploadUserId) || userProfiles[0])?.connected ?? null}
+                            onConnectSocials={isManaged ? handleConnectSocials : null}
+                            onPlay={(time) => handleClipPlay(time)}
+                            onPause={handleClipPause}
+                            onBulkSubtitle={handleBulkSubtitles}
+                            clipCount={results.clips.length}
+                            bulkProgress={bulkSub}
+                          />
+                        ))}
+                      </div>
+                    ) : status === 'processing' ? (
+                      <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-6 space-y-4">
+                        <div className="w-14 h-14 rounded-2xl bg-brandblue/10 border border-brandblue/30 flex items-center justify-center text-brandblue">
+                          <Loader2 size={28} className="animate-spin" />
+                        </div>
+                        <div className="max-w-md space-y-1.5">
+                          <h3 className="text-base font-semibold text-ink">Rendering Shorts in Queue</h3>
+                          <p className="text-xs text-muted leading-relaxed">
+                            ClipSnipr is analyzing speech transcriptions, extracting peak viral hooks, and reframing 9:16 vertical cuts. Completed shorts will appear here live.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 pt-2 text-[11px] text-muted">
+                          <span className="flex items-center gap-1.5"><Scissors size={12} className="text-brandblue" /> 1. Cut</span>
+                          <span className="text-rule">•</span>
+                          <span className="flex items-center gap-1.5"><Smartphone size={12} className="text-emerald-400" /> 2. Reframe</span>
+                          <span className="text-rule">•</span>
+                          <span className="flex items-center gap-1.5"><Globe size={12} className="text-cyan-400" /> 3. Subtitles</span>
+                          <span className="text-rule">•</span>
+                          <span className="flex items-center gap-1.5"><Server size={12} className="text-sky-400" /> 4. S3 Storage</span>
+                        </div>
+                      </div>
+                    ) : status === 'complete' ? (
+                      <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-6 space-y-4">
+                        <div className="w-14 h-14 rounded-2xl bg-paper3 border border-rule flex items-center justify-center text-muted">
+                          <Film size={26} />
+                        </div>
+                        <div className="max-w-md space-y-1.5">
+                          <h3 className="text-base font-semibold text-ink">No Shorts Generated</h3>
+                          <p className="text-xs text-muted leading-relaxed">
+                            The video or stream segment was processed, but no segments scored high enough to meet the viral threshold or rendering was concluded.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={handleReset}
+                            className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5"
+                          >
+                            <Plus size={14} /> Start Another Project
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => goToTab('history')}
+                            className="btn-ghost text-xs px-4 py-2"
+                          >
+                            View Library
+                          </button>
+                        </div>
                       </div>
                     ) : status === 'error' ? (
-                      <div className="h-full min-h-[120px] flex flex-col items-center justify-center text-danger space-y-2">
-                        <p>Generation failed.</p>
+                      <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-6 space-y-4">
+                        <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400">
+                          <AlertTriangle size={26} />
+                        </div>
+                        <div className="max-w-md space-y-1.5">
+                          <h3 className="text-base font-semibold text-ink">Processing Failed</h3>
+                          <p className="text-xs text-red-300 leading-relaxed">
+                            {jobError || 'An error occurred during video processing. Check the activity log on the left for details.'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleReset}
+                          className="btn-primary text-xs px-4 py-2"
+                        >
+                          Try Again / New Project
+                        </button>
                       </div>
-                    ) : null
-                  )}
-                </div>
-              </div>
+                    ) : null}
+                  </div>
 
+                </div>
+
+              </div>
             </div>
           )}
 

@@ -1844,6 +1844,7 @@ def _recover_jobs_from_disk():
                     raw = f.read().strip()
                 owner = int(raw) if raw.isdigit() else (raw or None)
             jobs[job_id] = {
+                'title': data.get('video_title') or data.get('title') or f"Project {job_id[:8]}",
                 'status': 'completed',
                 'logs': _TimedLog(["♻️ Job recovered from disk after server restart."]),
                 'output_dir': job_path,
@@ -6373,8 +6374,10 @@ async def get_status(job_id: str, request: Request):
 
     await _assert_job_owner(request, job)
     _logs_view = _visible_logs_timed(job['logs'])
+    proj_title = job.get('title') or (job.get('result') or {}).get('video_title') or (job.get('result') or {}).get('title')
     return {
         "status": _presented_status(job_id, job),
+        "title": proj_title,
         "logs": _logs_view[0],
         # When each line arrived (epoch seconds, parallel to "logs"), or None.
         "log_times": _logs_view[1],
@@ -6597,13 +6600,15 @@ async def restore_project(job_id: str, request: Request):
         if job_id in jobs:
             j = jobs[job_id]
             title = j.get("title") or f"Project {job_id[:8]}"
+            _logs_view = _visible_logs_timed(j.get("logs", []))
             return {
                 "job_id": job_id,
                 "status": j.get("status", "completed"),
                 "result": _with_download_urls(j.get("result")),
                 "project_state": None,
                 "title": title,
-                "logs": _visible_logs_timed(j.get("logs", []))[0] if j.get("logs") else [],
+                "logs": _logs_view[0] if j.get("logs") else [],
+                "log_times": _logs_view[1] if j.get("logs") else [],
             }
 
         # Check if this is an active live stream project in memory
@@ -6618,6 +6623,7 @@ async def restore_project(job_id: str, request: Request):
                     "project_state": None,
                     "title": sj.get("title") or f"Live Stream {job_id[:8]}",
                     "logs": sj.get("logs", []),
+                    "log_times": sj.get("log_times", []),
                 }
         except Exception:
             pass
@@ -6633,13 +6639,24 @@ async def restore_project(job_id: str, request: Request):
                     title = m.get("video_title") or m.get("title") or title
                 except Exception:
                     pass
+            rec_logs = rec.get("logs")
+            log_list = []
+            log_times_list = []
+            if rec_logs:
+                lv = _visible_logs_timed(rec_logs)
+                log_list = lv[0]
+                log_times_list = lv[1]
+            if not log_list:
+                log_list = ["♻️ Project restored from disk."]
+                log_times_list = [time.time()]
             return {
                 "job_id": job_id,
                 "status": rec.get("status", "completed"),
                 "result": _with_download_urls(rec.get("result")),
                 "project_state": None,
                 "title": title,
-                "logs": ["♻️ Project restored from disk."],
+                "logs": log_list,
+                "log_times": log_times_list,
             }
         raise HTTPException(status_code=404, detail="Project not found")
 

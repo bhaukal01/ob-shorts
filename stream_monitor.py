@@ -58,13 +58,16 @@ def _log(msg: str) -> None:
 
 def _append_stream_log(job_id: str, msg: str) -> None:
     _log(f"[{job_id}] {msg}")
+    now_ts = time.time()
     with _ACTIVE_LOCK:
         if job_id in _STREAM_ACTIVE_JOBS:
             _STREAM_ACTIVE_JOBS[job_id]["logs"].append(msg)
+            _STREAM_ACTIVE_JOBS[job_id].setdefault("log_times", []).append(now_ts)
     try:
         app_mod = sys.modules.get("app")
         if app_mod and job_id in app_mod.jobs:
             app_mod.jobs[job_id].setdefault("logs", []).append(msg)
+            app_mod.jobs[job_id].setdefault("log_times", []).append(now_ts)
     except Exception:
         pass
 
@@ -261,6 +264,7 @@ def get_or_create_stream_project(mon: Dict[str, Any], live_info: Dict[str, Any])
             except Exception:
                 pass
 
+            now_t = time.time()
             _STREAM_ACTIVE_JOBS[job_id] = {
                 "job_id": job_id,
                 "title": title,
@@ -270,8 +274,9 @@ def get_or_create_stream_project(mon: Dict[str, Any], live_info: Dict[str, Any])
                 "channel_name": channel_name,
                 "channel_url": channel_url,
                 "platform": platform,
-                "submitted_at": time.time(),
+                "submitted_at": now_t,
                 "logs": [f"🔴 Live stream tracking active: {title}", "📥 Capturing 10-minute rolling segments..."],
+                "log_times": [now_t, now_t],
                 "result": {"clips": shorts},
                 "ready_files": {os.path.basename(c.get("video_url", "")): c for c in shorts if c.get("video_url")},
             }
