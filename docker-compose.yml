@@ -19,8 +19,8 @@ services:
       - path: .env
         required: false
     volumes:
-      - openshorts_data:/app/data
-      - openshorts_output:/app/output
+      - clipforge_data:/app/data
+      - clipforge_output:/app/output
     restart: unless-stopped
 
   frontend:
@@ -40,7 +40,7 @@ services:
     expose:
       - "3100"
     volumes:
-      - openshorts_output:/output
+      - clipforge_output:/output
     env_file:
       - path: .env
         required: false
@@ -55,5 +55,5 @@ services:
       - backend
 
 volumes:
-  openshorts_data:
-  openshorts_output:
+  clipforge_data:
+  clipforge_output:

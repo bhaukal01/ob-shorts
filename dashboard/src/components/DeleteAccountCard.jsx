@@ -62,7 +62,7 @@ export default function DeleteAccountCard() {
       window.location.hash = '#/deleted';
       window.location.reload();
     } catch (e) {
-      setError(e?.detail || 'Could not delete your account. Please try again or email info@openshorts.app.');
+      setError(e?.detail || 'Could not delete your account. Please try again or email info@clipforge.studio.');
       sending.current = false;
       setBusy(false);
     }
@@ -74,7 +74,7 @@ export default function DeleteAccountCard() {
         <Trash2 size={16} className="text-danger" /> Delete account
       </h3>
       <p className="text-muted text-sm">
-        Close your OpenShorts account and erase everything we hold about you. This
+        Close your ClipForge account and erase everything we hold about you. This
         cannot be undone.
       </p>
 

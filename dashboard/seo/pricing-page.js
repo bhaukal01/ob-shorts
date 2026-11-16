@@ -2,11 +2,11 @@
  *
  * Until October 2026 /pricing was a 301 to the homepage table (/#pricing). A
  * redirect to an anchor cannot be cited as a pricing page, and price questions
- * ("is OpenShorts free", "cheaper than Opus Clip") are answered from pages that
+ * ("is ClipForge free", "cheaper than Opus Clip") are answered from pages that
  * are one. The homepage table stays; this page states the same plans in plain
  * HTML for readers and engines that never run the app.
  *
- * Every number is read from data.js (PRICE_MODELS.openshorts, EDITIONS), which
+ * Every number is read from data.js (PRICE_MODELS.clipforge, EDITIONS), which
  * mirrors cloud/config.py PLAN_MINUTES and the Stripe catalog. The plan buttons
  * are the existing app deep links /pricing?plan=<plan>[&interval=year]: nginx
  * sends a /pricing request that carries `plan` or `src` to the plan picker at
@@ -18,16 +18,16 @@ import { esc } from './render.js'
 
 const PUBLISHED = '2026-10-30'
 const CLOUD = EDITIONS.cloud
-const PLANS = PRICE_MODELS.openshorts.plans
+const PLANS = PRICE_MODELS.clipforge.plans
 const plan = (name) => {
   const p = PLANS.find((x) => x.name === name)
-  if (!p) throw new Error(`[pricing-page] no OpenShorts plan "${name}" in data.js PRICE_MODELS`)
+  if (!p) throw new Error(`[pricing-page] no ClipForge plan "${name}" in data.js PRICE_MODELS`)
   return p
 }
 const FREE = plan('Free')
 const PAID = ['Starter', 'Creator', 'Pro'].map(plan)
 if (PAID[0].monthly.price !== CLOUD.lowPrice || PAID[2].monthly.price !== CLOUD.highPrice) {
-  throw new Error('[pricing-page] PRICE_MODELS.openshorts and EDITIONS.cloud disagree on the plan prices')
+  throw new Error('[pricing-page] PRICE_MODELS.clipforge and EDITIONS.cloud disagree on the plan prices')
 }
 // app.FIRST_VIDEO_MAX_MINUTES, stated inside EDITIONS.cloud.summary.
 const FIRST_VIDEO_MINUTES = 60
@@ -76,11 +76,11 @@ const vizard = COMPETITORS.vizard
 
 const faq = [
   {
-    q: 'Is OpenShorts free?',
+    q: 'Is ClipForge free?',
     a: CANONICAL_ANSWERS.isItFree,
   },
   {
-    q: 'How much does OpenShorts cost?',
+    q: 'How much does ClipForge cost?',
     a: CANONICAL_ANSWERS.pricing,
   },
   {
@@ -101,7 +101,7 @@ const faq = [
   },
   {
     q: 'How does it compare with Opus Clip and Vizard?',
-    a: `All three bill by the minute of source video. Opus Clip starts at ${opus.entryPrice} for 150 minutes and Vizard Creator is 600 minutes for $29/month ($14.50 billed yearly), checked ${opus.checked}. Vizard is cheaper per minute at volume; OpenShorts is cheaper to start ($${CLOUD.lowPrice}/month for ${PAID[0].monthly.minutes} minutes) and the only one you can also run yourself for free.`,
+    a: `All three bill by the minute of source video. Opus Clip starts at ${opus.entryPrice} for 150 minutes and Vizard Creator is 600 minutes for $29/month ($14.50 billed yearly), checked ${opus.checked}. Vizard is cheaper per minute at volume; ClipForge is cheaper to start ($${CLOUD.lowPrice}/month for ${PAID[0].monthly.minutes} minutes) and the only one you can also run yourself for free.`,
   },
   {
     q: 'Can I cancel at any time?',
@@ -111,7 +111,7 @@ const faq = [
 
 const offer = (p, interval) => ({
   '@type': 'Offer',
-  name: `OpenShorts Cloud ${p.name}${interval === 'year' ? ' (billed yearly)' : ''}`,
+  name: `ClipForge Cloud ${p.name}${interval === 'year' ? ' (billed yearly)' : ''}`,
   price: String(interval === 'year' ? Math.round(p.yearly.price * 12) : p.monthly.price),
   priceCurrency: CLOUD.currency,
   description: `${p.monthly.minutes} minutes of source video a month, no watermark.`,
@@ -127,23 +127,23 @@ const offer = (p, interval) => ({
 const appNode = {
   '@type': 'SoftwareApplication',
   '@id': `${SITE.url}/pricing#app`,
-  name: 'OpenShorts',
+  name: 'ClipForge',
   url: `${SITE.url}/pricing`,
   applicationCategory: 'MultimediaApplication',
-  operatingSystem: 'Web browser (OpenShorts Cloud); Docker (self-hosted)',
+  operatingSystem: 'Web browser (ClipForge Cloud); Docker (self-hosted)',
   isAccessibleForFree: true,
   publisher: { '@id': `${SITE.url}/#organization` },
   offers: [
     {
       '@type': 'Offer',
-      name: 'OpenShorts self-hosted',
+      name: 'ClipForge self-hosted',
       price: '0',
       priceCurrency: CLOUD.currency,
       description: 'Free and open source under MIT. No watermark, no cap; your own hardware and API keys.',
     },
     {
       '@type': 'Offer',
-      name: 'OpenShorts Cloud free plan',
+      name: 'ClipForge Cloud free plan',
       price: '0',
       priceCurrency: CLOUD.currency,
       description: `First video clipped whole up to ${FIRST_VIDEO_MINUTES} minutes, then ${FREE.monthly.minutes} minutes a month, with a watermark. No credit card.`,
@@ -155,9 +155,9 @@ const appNode = {
 export function pricingPage() {
   return {
     path: '/pricing',
-    title: 'OpenShorts Pricing: Free to Self-Host, Cloud From $12/mo',
-    description: `OpenShorts pricing: free and open source to self-host, or Cloud with a free plan and paid plans of $12, $29 and $59 a month for 100, 300 and 750 minutes.`,
-    h1: `OpenShorts pricing: free to self-host, Cloud from $${CLOUD.lowPrice}/month`,
+    title: 'ClipForge Pricing: Free to Self-Host, Cloud From $12/mo',
+    description: `ClipForge pricing: free and open source to self-host, or Cloud with a free plan and paid plans of $12, $29 and $59 a month for 100, 300 and 750 minutes.`,
+    h1: `ClipForge pricing: free to self-host, Cloud from $${CLOUD.lowPrice}/month`,
     breadcrumb: [{ name: 'Pricing' }],
     published: PUBLISHED,
     updated: PUBLISHED,
@@ -165,7 +165,7 @@ export function pricingPage() {
     related: ['/alternatives', '/opus-clip-pricing', '/free-ai-clipping-tools-compared', '/self-hosted-ai-clip-maker'],
     cta: false,
     tldr: [
-      `OpenShorts has two editions. Self-hosted is free and open source under MIT: run it with Docker, bring your own API keys, no watermark and no usage cap. OpenShorts Cloud is the hosted service: your first video is clipped free up to ${FIRST_VIDEO_MINUTES} minutes, then ${FREE.monthly.minutes} minutes a month with a watermark and no credit card; paid plans remove the watermark.`,
+      `ClipForge has two editions. Self-hosted is free and open source under MIT: run it with Docker, bring your own API keys, no watermark and no usage cap. ClipForge Cloud is the hosted service: your first video is clipped free up to ${FIRST_VIDEO_MINUTES} minutes, then ${FREE.monthly.minutes} minutes a month with a watermark and no credit card; paid plans remove the watermark.`,
       esc(CANONICAL_ANSWERS.pricing),
     ],
     top: table,
@@ -189,10 +189,10 @@ as the dashboard, with no per-call fee.</p>
 
 <h2>Paying by the source minute</h2>
 <p>Most AI clippers bill by the minute of video you import, and so does
-OpenShorts Cloud. For comparison, checked ${esc(opus.checked)}: Opus Clip starts
+ClipForge Cloud. For comparison, checked ${esc(opus.checked)}: Opus Clip starts
 at ${esc(opus.entryPrice)} for 150 minutes, and Vizard at ${esc(vizard.entryPrice)}
 for 600 minutes. Per minute, Vizard is the cheaper of the three at volume;
-OpenShorts is the cheapest of the three to start and the only one you can run yourself. The
+ClipForge is the cheapest of the three to start and the only one you can run yourself. The
 <a href="/alternatives">alternatives page</a> has every tool's plans.</p>
 
 <h2>Common questions</h2><dl class="faq">${faq.map((f) => `<dt>${esc(f.q)}</dt><dd>${esc(f.a)}</dd>`).join('')}</dl>

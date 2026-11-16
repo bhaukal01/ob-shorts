@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,25 +8,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Lumen · Night Foundry — values mirror tokens.css (kept literal so
-        // Tailwind alpha modifiers like bg-brass/10 compile)
-        paper: "oklch(13% 0.014 265 / <alpha-value>)",
-        paper2: "oklch(16.5% 0.015 265 / <alpha-value>)",
-        paper3: "oklch(20% 0.016 265 / <alpha-value>)",
-        ink: "oklch(96% 0.006 262 / <alpha-value>)",
-        ink2: "oklch(86% 0.01 262 / <alpha-value>)",
-        muted: "oklch(64% 0.012 262 / <alpha-value>)",
-        brass: "oklch(76% 0.17 50 / <alpha-value>)",
-        brassink: "oklch(17% 0.03 50 / <alpha-value>)",
-        coral: "oklch(68% 0.16 18 / <alpha-value>)",
-        ok: "oklch(75% 0.11 150 / <alpha-value>)",
-        warn: "oklch(78% 0.14 75 / <alpha-value>)",
-        danger: "oklch(66% 0.18 25 / <alpha-value>)",
-        // legacy aliases so untouched files degrade gracefully
-        background: "oklch(13% 0.014 265 / <alpha-value>)",
-        surface: "oklch(16.5% 0.015 265 / <alpha-value>)",
-        primary: "oklch(76% 0.17 50 / <alpha-value>)",
-        accent: "oklch(68% 0.16 18 / <alpha-value>)",
+        paper: "var(--color-paper)",
+        paper2: "var(--color-paper-2)",
+        paper3: "var(--color-paper-3)",
+        ink: "var(--color-ink)",
+        ink2: "var(--color-ink-2)",
+        muted: "var(--color-muted)",
+        brand: "var(--color-accent)",
+        brass: "var(--color-accent)", // aliased to brand accent for seamless migration
+        brassink: "var(--color-accent-ink)",
+        coral: "var(--color-danger)",
+        ok: "var(--color-ok)",
+        warn: "var(--color-warn)",
+        danger: "var(--color-danger)",
+        background: "var(--color-paper)",
+        surface: "var(--color-paper-2)",
+        primary: "var(--color-accent)",
+        accent: "var(--color-accent)",
       },
       fontFamily: {
         display: "var(--font-display)",
@@ -43,22 +42,26 @@ export default {
         input: "var(--radius-input)",
       },
       fontSize: {
-        micro: ["10.5px", { letterSpacing: "0.10em" }],
+        micro: ["11px", { letterSpacing: "0.06em" }],
       },
       transitionTimingFunction: {
         out: "var(--ease-out)",
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'fade': 'fadeIn 0.4s var(--ease-out)',
-        // mobile shell: the nav drawer flies in from the edge, sheets rise
-        'slide-in-left': 'slideInLeft 0.24s var(--ease-out)',
-        'sheet-up': 'sheetUp 0.26s var(--ease-out)',
+        'fade': 'fadeIn 0.25s var(--ease-out)',
+        'scale-in': 'scaleIn 0.2s var(--ease-out)',
+        'slide-in-left': 'slideInLeft 0.22s var(--ease-out)',
+        'sheet-up': 'sheetUp 0.24s var(--ease-out)',
       },
       keyframes: {
         fadeIn: {
           from: { opacity: '0' },
           to: { opacity: '1' },
+        },
+        scaleIn: {
+          from: { opacity: '0', transform: 'scale(0.97)' },
+          to: { opacity: '1', transform: 'scale(1)' },
         },
         slideInLeft: {
           from: { transform: 'translateX(-100%)' },

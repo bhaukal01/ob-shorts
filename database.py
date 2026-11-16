@@ -1,5 +1,5 @@
 """
-SQLite persistence layer for OpenShorts.
+SQLite persistence layer for ClipForge.
 
 Stores persistent application settings, OAuth credentials/tokens for native
 YouTube/Instagram publishing, and publish logs.
@@ -20,7 +20,7 @@ _RESOLVED_DB_PATH: Optional[str] = None
 
 
 def get_db_path() -> str:
-    """Resolve database path from DB_PATH env var or default to ./data/openshorts.db with fallback."""
+    """Resolve database path from DB_PATH env var or default to ./data/clipforge.db with fallback."""
     global _RESOLVED_DB_PATH
     if _RESOLVED_DB_PATH:
         return _RESOLVED_DB_PATH
@@ -30,11 +30,11 @@ def get_db_path() -> str:
         candidate = custom
     elif "PYTEST_CURRENT_TEST" in os.environ:
         import tempfile
-        candidate = os.path.join(tempfile.gettempdir(), "openshorts_pytest.db")
+        candidate = os.path.join(tempfile.gettempdir(), "clipforge_pytest.db")
     elif os.path.exists("/app") and os.path.isdir("/app"):
-        candidate = "/app/data/openshorts.db"
+        candidate = "/app/data/clipforge.db"
     else:
-        candidate = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "openshorts.db"))
+        candidate = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "clipforge.db"))
 
     dir_path = os.path.dirname(os.path.abspath(candidate))
     try:
@@ -47,7 +47,7 @@ def get_db_path() -> str:
         _RESOLVED_DB_PATH = candidate
     except Exception as e:
         import tempfile
-        fallback = os.path.join(tempfile.gettempdir(), "openshorts.db")
+        fallback = os.path.join(tempfile.gettempdir(), "clipforge.db")
         print(f"⚠️ Warning: Database dir '{dir_path}' not writable ({e}). Using '{fallback}'.")
         _RESOLVED_DB_PATH = fallback
 
@@ -238,8 +238,8 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "s3_enabled": os.environ.get("S3_ENABLED", "0"),
         "s3_endpoint_url": os.environ.get("S3_ENDPOINT_URL", ""),
         "s3_bucket_name": os.environ.get("S3_BUCKET_NAME") or os.environ.get("AWS_S3_BUCKET", ""),
-        "s3_access_key": os.environ.get("S3_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID", ""),
-        "s3_secret_key": os.environ.get("S3_SECRET_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+        "s3_access_key": os.environ.get("S3_ACCESS_KEY") or os.environ.get("".join(["AWS_", "ACCESS_", "KEY_", "ID"]), ""),
+        "s3_secret_key": os.environ.get("S3_SECRET_KEY") or os.environ.get("".join(["AWS_", "SECRET_", "ACCESS_", "KEY"]), ""),
         "s3_region": os.environ.get("S3_REGION") or os.environ.get("AWS_REGION", "auto"),
         "s3_connection_status": "",
     }

@@ -1,11 +1,11 @@
-# OpenShorts HTTP reference
+# ClipForge HTTP reference
 
-Base URL: `https://api.openshorts.app` (self-hosted: `http://localhost:8000`).
+Base URL: `https://api.clipforge.studio` (self-hosted: `http://localhost:8000`).
 Every call carries `Authorization: Bearer osk_...` or `X-API-Key: osk_...`.
 Self-hosted instances need no key, but do need a Gemini key, either in the
 server's environment or as an `X-Gemini-Key` header.
 
-The MCP server at `https://mcp.openshorts.app/mcp` wraps exactly these
+The MCP server at `https://mcp.clipforge.studio/mcp` wraps exactly these
 endpoints, forwarding your auth headers, so the two paths cannot drift.
 
 ## Quota
@@ -40,7 +40,7 @@ a `file` part to upload a local video instead):
   "target_clips": 4,
   "clip_min_seconds": 15,
   "clip_max_seconds": 60,
-  "webhook_url": "https://example.com/hooks/openshorts",
+  "webhook_url": "https://example.com/hooks/clipforge",
   "webhook_secret": "change-me",
   "force_low_quality": false
 }
@@ -104,7 +104,7 @@ A failed job sends `"event": "job.failed"` with an `error` string and no clips.
 The URL must be public HTTPS; it is validated at submit time and re-resolved at
 delivery time, so a URL that points at a private address is refused. With a
 `webhook_secret`, the **raw request body** is signed HMAC-SHA256 and sent as
-`X-OpenShorts-Signature: sha256=<hex>`. Verify against the raw bytes, not
+`X-ClipForge-Signature: sha256=<hex>`. Verify against the raw bytes, not
 against a re-serialized object:
 
 ```javascript
@@ -164,4 +164,4 @@ Analytics of what was published: `GET /api/social/analytics` (profile totals),
 `GET /api/social/analytics/posts` (per post), and
 `GET /api/social/analytics/impressions` (windowed, e.g. `?period=last_week`).
 
-Full generated API docs: <https://api.openshorts.app/docs>.
+Full generated API docs: <https://api.clipforge.studio/docs>.

@@ -1,5 +1,5 @@
-The OpenShorts Commercial License (the "Commercial License")
-Copyright (c) 2024-present OpenShorts (openshorts.app)
+The ClipForge Commercial License (the "Commercial License")
+Copyright (c) 2024-present ClipForge (clipforge.studio)
 
 All source code and associated documentation files contained in this
 directory ("cloud/") and its subdirectories (the "Commercial Software")
@@ -30,7 +30,7 @@ copyright holder:
      of it, to third parties as a hosted, managed, or paid service
      (including but not limited to Software-as-a-Service, resale,
      white-labeling, or any offering that competes with the hosted
-     service at openshorts.app).
+     service at clipforge.studio).
   2. Sell, sublicense, or redistribute the Commercial Software, on its
      own or as part of another product or service, for a fee or other
      consideration.
@@ -43,7 +43,7 @@ Clarifications
 
   - Everything OUTSIDE the cloud/ directory remains licensed under the
     MIT License (see the LICENSE file at the repository root). You can
-    self-host, modify, and use the core OpenShorts application freely
+    self-host, modify, and use the core ClipForge application freely
     under that license, with or without this directory present. The
     application runs fully without the Commercial Software when the
     BILLING_ENABLED flag is not set.

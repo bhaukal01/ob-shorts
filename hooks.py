@@ -61,7 +61,7 @@ _EMOJI_FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/NotoColorEmoji.ttf",
     "/usr/share/fonts/noto/NotoColorEmoji.ttf",
     "/usr/local/share/fonts/NotoColorEmoji.ttf",
-    "/usr/local/share/fonts/openshorts/NotoColorEmoji.ttf",
+    "/usr/local/share/fonts/clipforge/NotoColorEmoji.ttf",
     "/System/Library/Fonts/Apple Color Emoji.ttc",
 ]
 
@@ -295,7 +295,7 @@ def create_hook_image(text, target_width, output_image_path="hook_overlay.png", 
     if has_devanagari:
         dev_candidates = [
             os.path.join(FONT_DIR, "NotoSansDevanagari-Bold.ttf"),
-            "/usr/local/share/fonts/openshorts/NotoSansDevanagari-Bold.ttf",
+            "/usr/local/share/fonts/clipforge/NotoSansDevanagari-Bold.ttf",
             "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf",
         ]
         for dev_path in dev_candidates:

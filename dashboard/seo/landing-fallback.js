@@ -48,7 +48,7 @@ const FEATURES = [
   ['Self-hosted and private', 'Run it with Docker on your own machine and the source video never leaves your infrastructure.'],
   ['Free AI YouTube studio', 'AI thumbnail generator, 10 viral title suggestions and auto-written descriptions with chapter timestamps.'],
   ['Direct social publishing', 'Post to TikTok, Instagram Reels and YouTube Shorts from the dashboard.'],
-  ['MCP server, API and CLI for AI agents', 'Connect Claude, ChatGPT or n8n to an always-on endpoint (mcp.openshorts.app/mcp) and automate clipping end to end, with a REST API, per-user keys, completion webhooks and a zero-dependency CLI (pip install openshorts). Guide at /mcp.'],
+  ['MCP server, API and CLI for AI agents', 'Connect Claude, ChatGPT or n8n to an always-on endpoint (mcp.clipforge.studio/mcp) and automate clipping end to end, with a REST API, per-user keys, completion webhooks and a zero-dependency CLI (pip install clipforge). Guide at /mcp.'],
   ['AI UGC video generator', 'The AI writes a script and generates a lip-synced avatar video for any product or business, from $0.65 per video.'],
   ['AI actors with lip-sync', 'Pick an AI actor or upload a photo to get a talking-head video with matched lip movement.'],
 ]
@@ -66,17 +66,17 @@ const STEPS = [
 // FAQPage JSON-LD in index.html, with the same answers.
 const FAQ = [
   [
-    'Is OpenShorts really free?',
-    'Self-hosting is free under the MIT licence, with no watermark and no cap; OpenShorts Cloud has a free plan (your first video up to 60 minutes, then 20 minutes a month, watermarked) and paid plans from $12/month.' +
-      ' Self-hosted costs you hardware and time: on a typical CPU an 8-minute video takes 5 to 8 minutes to process, and you supply your own Google Gemini key, whose free tier covers 1,500 requests a day. On OpenShorts Cloud an NVIDIA GPU clips that same video in about 50 seconds, the Gemini key is included, auto-posting to TikTok, Instagram and YouTube is already wired up, and your clips stay retrievable from any browser.',
+    'Is ClipForge really free?',
+    'Self-hosting is free under the MIT licence, with no watermark and no cap; ClipForge Cloud has a free plan (your first video up to 60 minutes, then 20 minutes a month, watermarked) and paid plans from $12/month.' +
+      ' Self-hosted costs you hardware and time: on a typical CPU an 8-minute video takes 5 to 8 minutes to process, and you supply your own Google Gemini key, whose free tier covers 1,500 requests a day. On ClipForge Cloud an NVIDIA GPU clips that same video in about 50 seconds, the Gemini key is included, auto-posting to TikTok, Instagram and YouTube is already wired up, and your clips stay retrievable from any browser.',
   ],
   [
     'Do the clips have a watermark?',
-    'Only on the free Cloud plan. Clips made on the free plan of OpenShorts Cloud carry a small watermark; every paid plan, from $12/month, has none, and upgrading removes the mark from the clips you already made. The self-hosted edition, free under MIT, never adds one.',
+    'Only on the free Cloud plan. Clips made on the free plan of ClipForge Cloud carry a small watermark; every paid plan, from $12/month, has none, and upgrading removes the mark from the clips you already made. The self-hosted edition, free under MIT, never adds one.',
   ],
   [
     'Do I need a credit card to start?',
-    'No. The free plan of OpenShorts Cloud needs no credit card: your first video is clipped free up to 60 minutes, then you get 20 free minutes every month, with a watermark. You only add a card if you choose a paid plan, from $12/month.',
+    'No. The free plan of ClipForge Cloud needs no credit card: your first video is clipped free up to 60 minutes, then you get 20 free minutes every month, with a watermark. You only add a card if you choose a paid plan, from $12/month.',
   ],
   [
     'How many clips do I get from one video?',
@@ -84,19 +84,19 @@ const FAQ = [
   ],
   [
     'Can I clip someone else\'s YouTube video?',
-    'Only if you own it or have the rights or permission to use it. Before a video is processed, OpenShorts asks you to confirm you own the content or have the rights to it, and you are responsible for what you submit. Fair use depends on the country and on how the clip is used, so it is never guaranteed; reuploading someone else\'s video without permission is copyright infringement, and platforms remove it and strike the account. Clip your own videos, channels you manage, or footage you have licensed.',
+    'Only if you own it or have the rights or permission to use it. Before a video is processed, ClipForge asks you to confirm you own the content or have the rights to it, and you are responsible for what you submit. Fair use depends on the country and on how the clip is used, so it is never guaranteed; reuploading someone else\'s video without permission is copyright infringement, and platforms remove it and strike the account. Clip your own videos, channels you manage, or footage you have licensed.',
   ],
-  ['What is OpenShorts and how does it work?', CANONICAL_ANSWERS.whatIsIt + ' ' + CANONICAL_ANSWERS.howItWorks],
+  ['What is ClipForge and how does it work?', CANONICAL_ANSWERS.whatIsIt + ' ' + CANONICAL_ANSWERS.howItWorks],
   [
-    'How does OpenShorts compare to Opus Clip?',
-    'Both do AI viral moment detection and smart vertical cropping. OpenShorts is MIT-licensed and can be self-hosted, so the source video never leaves your machine, and it adds voice dubbing into 30+ languages (with your own ElevenLabs key) plus an AI UGC generator with lip-synced actors. Opus Clip is closed source and cloud only, starting at $15/month as of October 2026, and it ships a larger caption-style library. OpenShorts Cloud starts at $12/month, and self-hosting is free. Full comparison at /alternatives/opus-clip.',
+    'How does ClipForge compare to Opus Clip?',
+    'Both do AI viral moment detection and smart vertical cropping. ClipForge is MIT-licensed and can be self-hosted, so the source video never leaves your machine, and it adds voice dubbing into 30+ languages (with your own ElevenLabs key) plus an AI UGC generator with lip-synced actors. Opus Clip is closed source and cloud only, starting at $15/month as of October 2026, and it ships a larger caption-style library. ClipForge Cloud starts at $12/month, and self-hosting is free. Full comparison at /alternatives/opus-clip.',
   ],
   [
     'How does the smart vertical cropping work?',
     'TRACK mode follows a single subject with MediaPipe face detection and a YOLOv8 fallback, damped so the crop holds still inside a safe zone rather than chasing every head movement. GENERAL mode handles group shots and landscapes by preserving the full width over a blurred backdrop. A speaker tracker prevents the crop from flipping between people and holds position through brief occlusions.',
   ],
   [
-    'Can OpenShorts translate and dub videos?',
+    'Can ClipForge translate and dub videos?',
     'Yes, with your own ElevenLabs API key, into more than 30 languages, preserving the original speaker\'s voice characteristics. After dubbing, the audio is re-transcribed so the burned-in subtitles are in the target language rather than the original.',
   ],
   [
@@ -104,8 +104,8 @@ const FAQ = [
     'It generates marketing videos with AI actors for any product or business. You describe the business or paste a website URL, and the AI writes a script, generates a lip-synced actor with voiceover, adds b-roll and subtitles, with the hook spoken in the first seconds. Low Cost mode is about $0.65 per video and Premium is about $2.00. It works for restaurants, e-commerce, coaching, local businesses and apps, not only software.',
   ],
   [
-    'Can I automate OpenShorts from Claude, ChatGPT or n8n?',
-    'Yes. OpenShorts has a native MCP server at mcp.openshorts.app/mcp plus a REST API with per-user keys and completion webhooks, so an agent can submit a video URL, wait for processing, list the clips and publish them. The hosted endpoint is always on, with the API key created in your account page; the self-hosted edition serves the same /mcp endpoint while your machine is running. A zero-dependency CLI is on PyPI as openshorts. Full guide at /mcp.',
+    'Can I automate ClipForge from Claude, ChatGPT or n8n?',
+    'Yes. ClipForge has a native MCP server at mcp.clipforge.studio/mcp plus a REST API with per-user keys and completion webhooks, so an agent can submit a video URL, wait for processing, list the clips and publish them. The hosted endpoint is always on, with the API key created in your account page; the self-hosted edition serves the same /mcp endpoint while your machine is running. A zero-dependency CLI is on PyPI as clipforge. Full guide at /mcp.',
   ],
   [
     'What are the system requirements to self-host?',
@@ -126,7 +126,7 @@ const HERO_FORM = `<form id="seo-hero-form" action="/#app" method="get" style="d
     <input id="seo-hero-url" type="url" name="url" placeholder="Paste a YouTube link" autocomplete="off" style="flex:1 1 18rem;min-width:0;padding:.8rem 1rem;border-radius:10px;border:1px solid oklch(96% 0.006 262 / .16);background:oklch(16.5% 0.015 265);color:oklch(96% 0.006 262);font:inherit;font-size:1rem">
     <button type="submit" style="padding:.8rem 1.3rem;border-radius:10px;border:0;background:oklch(76% 0.17 50);color:oklch(13% 0.014 265);font:inherit;font-weight:600;cursor:pointer">Get free clips &rarr;</button>
   </form>
-  <script>(function(){var f=document.getElementById('seo-hero-form');if(!f)return;f.addEventListener('submit',function(e){e.preventDefault();var u=(f.elements.url.value||'').trim();try{if(u)localStorage.setItem('os_pending_url',u);localStorage.setItem('openshorts_skip_landing','1')}catch(_){}location.hash='#app'})})()</script>`
+  <script>(function(){var f=document.getElementById('seo-hero-form');if(!f)return;f.addEventListener('submit',function(e){e.preventDefault();var u=(f.elements.url.value||'').trim();try{if(u)localStorage.setItem('os_pending_url',u);localStorage.setItem('clipforge_skip_landing','1')}catch(_){}location.hash='#app'})})()</script>`
 
 /* Per-platform links, the same ones and in the same order as WORKS_WITH,
  * PLATFORMS and SWITCHING in Landing.jsx. */
@@ -177,7 +177,7 @@ ${NAV_SCRIPT}
   <p style="${S.p};max-width:44rem;font-size:1.05rem">Paste a YouTube link or upload a podcast, stream or interview. The AI picks the 3 to 15 moments worth posting, reframes them to 9:16 around the people talking, and burns in the captions, ready for TikTok, Reels and Shorts in minutes. Prefer to run it yourself? It is <a href="/free-ai-clip-generator" style="${S.a}">free and open source</a>. Claude, ChatGPT and n8n can drive it too, over <a href="/mcp" style="${S.a}">MCP</a>.</p>
   ${HERO_FORM}
   <p style="${S.muted};max-width:44rem">45,000+ accounts created &middot; 32,900+ videos clipped &middot; 8,300+ hours of video processed &middot; 7.5k GitHub stars.</p>
-  <p style="${S.muted};max-width:44rem"><strong style="color:oklch(75% 0.11 150)">No credit card required.</strong> Your first video is free up to 60 minutes, then 20 free minutes every month. Paid plans from $12/month without a watermark. Prefer to run it yourself? <a style="${S.a}" href="https://github.com/mutonby/openshorts" rel="noopener">Self-host free on GitHub</a>.</p>
+  <p style="${S.muted};max-width:44rem"><strong style="color:oklch(75% 0.11 150)">No credit card required.</strong> Your first video is free up to 60 minutes, then 20 free minutes every month. Paid plans from $12/month without a watermark. Prefer to run it yourself? <a style="${S.a}" href="https://github.com/mutonby/clipforge" rel="noopener">Self-host free on GitHub</a>.</p>
   <p style="${S.muted};max-width:44rem">Works with links from ${WORKS_WITH.map(link).join(' &middot; ')}.</p>
 </div></section>
 
@@ -189,7 +189,7 @@ ${NAV_SCRIPT}
 </div></section>
 
 <section style="${S.section}"><div style="${S.wrap}">
-  <h2 style="${S.h2}">what openshorts is</h2>
+  <h2 style="${S.h2}">what clipforge is</h2>
   <p style="${S.p};max-width:48rem">${CANONICAL_ANSWERS.whatIsIt}</p>
   <p style="${S.p};max-width:48rem">${CANONICAL_ANSWERS.howItWorks}</p>
 </div></section>
@@ -197,8 +197,8 @@ ${NAV_SCRIPT}
 <section id="pricing" style="${S.section}"><div style="${S.wrap}">
   <h2 style="${S.h2}">Free plan vs paid: what you actually get</h2>
   <div style="${S.grid};max-width:56rem">
-    ${card('OpenShorts self-hosted &middot; $0', EDITIONS.selfHosted.summary)}
-    ${card('OpenShorts Cloud &middot; free tier, then from $12/month', EDITIONS.cloud.summary)}
+    ${card('ClipForge self-hosted &middot; $0', EDITIONS.selfHosted.summary)}
+    ${card('ClipForge Cloud &middot; free tier, then from $12/month', EDITIONS.cloud.summary)}
   </div>
 </div></section>
 
@@ -215,8 +215,8 @@ ${NAV_SCRIPT}
 </div></section>
 
 <section id="comparison" style="${S.section}"><div style="${S.wrap}">
-  <h2 style="${S.h2}">OpenShorts vs Opus Clip, Klap and Vizard</h2>
-  <p style="${S.muted};max-width:48rem">Entry pricing checked 5 October 2026. OpenShorts is $0 self-hosted or $12/month hosted without a watermark, billed monthly. 2short.ai starts at $9.90/month, Submagic at $12, Klap at $14 and Vizard at $14.50 a month on yearly billing, Opus Clip at $15/month and Quso (formerly Vidyo.ai) at $19/month yearly. OpenShorts is the only open source and self-hostable option.</p>
+  <h2 style="${S.h2}">ClipForge vs Opus Clip, Klap and Vizard</h2>
+  <p style="${S.muted};max-width:48rem">Entry pricing checked 5 October 2026. ClipForge is $0 self-hosted or $12/month hosted without a watermark, billed monthly. 2short.ai starts at $9.90/month, Submagic at $12, Klap at $14 and Vizard at $14.50 a month on yearly billing, Opus Clip at $15/month and Quso (formerly Vidyo.ai) at $19/month yearly. ClipForge is the only open source and self-hostable option.</p>
   <h3 style="${S.h3};margin-top:1.5rem">Switching from another tool?</h3>
   <p style="${S.muted}">${SWITCHING.map(link).join(' &middot; ')}</p>
   <p style="${S.muted}">
@@ -249,7 +249,7 @@ ${NAV_SCRIPT}
     <a style="${S.a}" href="/open-source-ai-video-generator">Open source AI video generator</a> &middot;
     <a style="${S.a}" href="/podcast-to-shorts">Podcast clips</a> &middot;
     <a style="${S.a}" href="/youtube-to-shorts-converter">YouTube to Shorts converter</a> &middot;
-    <a style="${S.a}" href="/how-openshorts-works">How it works</a> &middot;
+    <a style="${S.a}" href="/how-clipforge-works">How it works</a> &middot;
     <a style="${S.a}" href="/alternatives">All alternatives compared</a> &middot;
     <a style="${S.a}" href="/free-ai-clipping-tools-compared">Free AI clipping tools compared</a> &middot;
     <a style="${S.a}" href="/alternativas">Alternativas (ES)</a> &middot;
@@ -276,7 +276,7 @@ ${NAV_SCRIPT}
 
 <section style="${S.section};border-bottom:none"><div style="${S.wrap}">
   <h2 style="${S.h2}">Open source: run the same pipeline on your own hardware</h2>
-  <p style="${S.p};max-width:48rem">${EDITIONS.selfHosted.summary} It needs Docker and realistically 8GB of RAM; an NVIDIA GPU is optional and cuts processing time by roughly an order of magnitude. <a style="${S.a}" href="https://github.com/mutonby/openshorts" rel="noopener">Source and setup on GitHub</a>.</p>
+  <p style="${S.p};max-width:48rem">${EDITIONS.selfHosted.summary} It needs Docker and realistically 8GB of RAM; an NVIDIA GPU is optional and cuts processing time by roughly an order of magnitude. <a style="${S.a}" href="https://github.com/mutonby/clipforge" rel="noopener">Source and setup on GitHub</a>.</p>
 </div></section>
 
 </div>`

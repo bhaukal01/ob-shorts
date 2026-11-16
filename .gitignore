@@ -41,7 +41,7 @@ data/
 .claude/
 # skills/ holds third-party installs (symlinks); our own published skill is versioned
 skills/*
-!skills/openshorts/
+!skills/clipforge/
 skills-lock.json
 
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2 } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import McpConnectCard from './components/McpConnectCard';
@@ -7,12 +7,9 @@ import ResultCard from './components/ResultCard';
 import ProcessingAnimation from './components/ProcessingAnimation';
 import SegmentedControl from './components/ui/SegmentedControl';
 import UsageMeter from './components/UsageMeter';
-import WatermarkModal, { watermarkNoticeDismissed } from './components/WatermarkModal';
 import { getApiUrl } from './config';
-import StarBanner from './components/StarBanner';
 import ClipTutorial from './components/ClipTutorial';
 import OnboardingSurvey from './components/OnboardingSurvey';
-import TrialGate from './components/TrialGate';
 import AdvancedBanner from './components/AdvancedBanner';
 import ProfileMenu from './components/ProfileMenu';
 import Modal from './components/ui/Modal';
@@ -29,14 +26,61 @@ const HistoryTab = React.lazy(() => import('./components/HistoryTab'));
 const ClipEditor = React.lazy(() => import('./components/ClipEditor'));
 const ReframeEditor = React.lazy(() => import('./components/ReframeEditor'));
 const ScheduleWeekModal = React.lazy(() => import('./components/ScheduleWeekModal'));
-const PlanChoiceModal = React.lazy(() => import('./components/PlanChoiceModal'));
-const TrialUpgradeModal = React.lazy(() => import('./components/TrialUpgradeModal'));
-const TopUpModal = React.lazy(() => import('./components/TopUpModal'));
 const LoginModal = React.lazy(() => import('./components/LoginModal'));
 
+// Brand Logo Component
+const BrandLogo = () => (
+  <div className="flex items-center gap-2.5">
+    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shrink-0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 6h16" />
+        <path d="M4 12h10" />
+        <path d="M4 18h14" />
+        <circle cx="19" cy="12" r="2.5" fill="#10b981" stroke="none" />
+      </svg>
+    </div>
+    <div className="flex flex-col">
+      <span className="font-bold text-base tracking-tight text-ink leading-none">ClipForge</span>
+      <span className="text-[10px] font-mono tracking-wider uppercase text-muted leading-tight mt-0.5">Studio</span>
+    </div>
+  </div>
+);
+
+// Theme Toggle Component: System, Dark, Light
+const ThemeToggle = ({ theme, setTheme }) => (
+  <div className="flex items-center p-0.5 rounded-lg border border-rule bg-paper3/60 text-xs">
+    <button
+      type="button"
+      onClick={() => setTheme('light')}
+      title="Light theme"
+      className={`p-1.5 rounded-md transition-colors ${theme === 'light' ? 'bg-paper text-brand shadow-xs' : 'text-muted hover:text-ink'}`}
+      aria-label="Light theme"
+    >
+      <Sun size={14} />
+    </button>
+    <button
+      type="button"
+      onClick={() => setTheme('dark')}
+      title="Dark theme"
+      className={`p-1.5 rounded-md transition-colors ${theme === 'dark' ? 'bg-paper text-brand shadow-xs' : 'text-muted hover:text-ink'}`}
+      aria-label="Dark theme"
+    >
+      <Moon size={14} />
+    </button>
+    <button
+      type="button"
+      onClick={() => setTheme('system')}
+      title="System default theme"
+      className={`p-1.5 rounded-md transition-colors ${theme === 'system' ? 'bg-paper text-brand shadow-xs' : 'text-muted hover:text-ink'}`}
+      aria-label="System default theme"
+    >
+      <Monitor size={14} />
+    </button>
+  </div>
+);
+
 // Enhanced "Encryption" using XOR + Base64 with a Salt
-// This is better than plain Base64 but still client-side.
-const SECRET_KEY = import.meta.env.VITE_ENCRYPTION_KEY || "OpenShorts-Static-Salt-Change-Me";
+const SECRET_KEY = import.meta.env.VITE_ENCRYPTION_KEY || "ClipForge-Static-Salt-Change-Me";
 const ENCRYPTION_PREFIX = "ENC:";
 
 const encrypt = (text) => {
@@ -242,7 +286,7 @@ const UserProfileSelector = ({ profiles, selectedUserId, onSelect, onConnect }) 
   );
 };
 
-const SESSION_KEY = 'openshorts_session';
+const SESSION_KEY = 'clipforge_session';
 
 // The server's own explanation for a rejected/failed job, readable: FastAPI
 // answers {"detail": "..."} or {"detail": {"message": ...}}. Showing the raw
@@ -318,7 +362,49 @@ function App() {
     return '';
   });
 
-  // Persistent Backend Settings from SQLite database (/app/data/openshorts.db)
+  // Tri-Mode Theme Engine: 'system' (default) | 'dark' | 'light'
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('clipforge_theme') || 'system';
+    } catch (_) {
+      return 'system';
+    }
+  });
+
+  useEffect(() => {
+    const applyTheme = (t) => {
+      const isDark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+        document.documentElement.style.colorScheme = 'dark';
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.style.colorScheme = 'light';
+      }
+      try {
+        localStorage.setItem('clipforge_theme', t);
+      } catch (_) {}
+    };
+
+    applyTheme(theme);
+
+    if (theme === 'system') {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      const listener = (e) => {
+        if (e.matches) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.style.colorScheme = 'light';
+        }
+      };
+      mql.addEventListener('change', listener);
+      return () => mql.removeEventListener('change', listener);
+    }
+  }, [theme]);
+
+  // Persistent Backend Settings from SQLite database (clipforge.db)
   const [backendSettings, setBackendSettings] = useState({
     llm_provider: 'openai',
     llm_base_url: 'https://api.onebyt.live/v1',
@@ -769,7 +855,7 @@ function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `openshorts_clips_${(jobId || '').slice(0, 8)}.zip`;
+      a.download = `clipforge_clips_${(jobId || '').slice(0, 8)}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1729,20 +1815,15 @@ function App() {
   });
 
   // --- UI Components ---
-
-  // One nav definition drives all three surfaces: the desktop rail, the mobile
-  // drawer, and the bottom tab bar. `short` is the tab-bar label — the full one
-  // wraps to two lines in a 5-up bar on a 360px phone.
   const navItems = [
-    { id: 'dashboard', ord: '01', icon: LayoutDashboard, label: 'Workspace', short: 'workspace', primary: true },
-    { id: 'live', ord: '02', icon: Radio, label: 'Live Streams', short: 'live', primary: true },
-    { id: 'history', ord: '03', icon: History, label: 'Library / Jobs', short: 'library', primary: true },
-    { id: 'settings', ord: '04', icon: Settings, label: 'Settings', short: 'settings', primary: true },
+    { id: 'dashboard', ord: '01', icon: Film, label: 'Clip Studio', short: 'Studio', primary: true },
+    { id: 'live', ord: '02', icon: Radio, label: 'Creator Monitors', short: 'Monitors', primary: true },
+    { id: 'history', ord: '03', icon: History, label: 'Project Library', short: 'Library', primary: true },
+    { id: 'settings', ord: '04', icon: Settings, label: 'Settings & Accounts', short: 'Settings', primary: true },
   ];
   const activeNav = navItems.find((n) => n.id === activeTab);
 
-  // Escape closes the mobile drawer. The shell itself is overflow-hidden, so
-  // there is no body scroll to lock behind it.
+  // Escape closes the mobile drawer.
   useEffect(() => {
     if (!navOpen) return;
     const onKey = (e) => { if (e.key === 'Escape') setNavOpen(false); };
@@ -1757,84 +1838,61 @@ function App() {
   };
   const tabLocked = (id) => tutorialLock && id !== 'dashboard';
 
-  // Shared footer links (repo, pricing, contact) — same list in the
-  // desktop rail and the mobile drawer, so they can never drift apart.
   const NavFooterLinks = ({ collapsed = false }) => (
-    <>
-      <a
-        href="https://github.com/bhaukal01/ob-shorts"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2 px-3 py-2 text-xs lowercase text-muted hover:text-ink2 transition-colors"
-      >
-        <svg height="14" viewBox="0 0 16 16" version="1.1" width="14" aria-hidden="true" fill="currentColor" className="shrink-0"><path fillRule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
-        <span className={collapsed ? 'hidden lg:block truncate' : 'truncate'}>open source</span>
-      </a>
-      {billingEnabled && (
-        <a
-          href="#/pricing"
-          className="flex items-center gap-2 px-3 py-2 text-xs lowercase text-muted hover:text-ink2 transition-colors"
-        >
-          <Sparkles size={14} className="shrink-0" />
-          <span className={collapsed ? 'hidden lg:block truncate' : 'truncate'}>plans &amp; pricing</span>
-        </a>
-      )}
-      <a
-        href="mailto:info@openshorts.app"
-        className="flex items-center gap-2 px-3 py-2 text-xs lowercase text-muted hover:text-ink2 transition-colors"
-      >
-        <Mail size={14} className="shrink-0" />
-        <span className={collapsed ? 'hidden lg:block truncate' : 'truncate'}>info@openshorts.app</span>
-      </a>
-    </>
+    <div className="flex flex-col gap-2 pt-1">
+      <div className="flex items-center justify-between">
+        <span className={`text-[11px] font-mono text-muted uppercase tracking-wider ${collapsed ? 'hidden lg:block' : ''}`}>Theme</span>
+        <ThemeToggle theme={theme} setTheme={setTheme} />
+      </div>
+      <div className="text-[10.5px] font-mono text-muted/70 flex items-center justify-between pt-1 border-t border-rule/50">
+        <span className={collapsed ? 'hidden lg:block' : ''}>ClipForge v2.4</span>
+        <span className="text-emerald-500 flex items-center gap-1 font-semibold">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" /> Live
+        </span>
+      </div>
+    </div>
   );
 
-  // Desktop rail: icon-only from md, labelled from lg. Below md it is gone
-  // entirely — an unlabelled 80px rail ate a fifth of a phone screen.
+  // Desktop rail
   const Sidebar = () => (
     <div className="hidden md:flex w-20 lg:w-64 bg-paper2 border-r border-rule flex-col h-full shrink-0 transition-all duration-300">
-      <a href="#app" onClick={() => goToTab('dashboard')} className="p-6 flex items-center gap-3" title="openshorts home">
-        <div className="w-8 h-8 bg-paper3 rounded-input flex items-center justify-center shrink-0 overflow-hidden border border-rule">
-          <img src="/logo-openshorts.png" alt="Logo" className="w-full h-full object-cover" />
-        </div>
-        <span className="font-display lowercase text-lg text-ink hidden lg:block">openshorts</span>
+      <a href="#app" onClick={() => goToTab('dashboard')} className="p-5 flex items-center gap-3" title="ClipForge Studio">
+        <BrandLogo />
       </a>
 
-      <nav className="flex-1 px-4 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-3 space-y-1">
         {navItems.map((item) => {
           const NavIcon = item.icon;
           const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
-              data-tutorial={item.id === 'dashboard' ? 'nav-clips' : undefined}
               onClick={() => goToTab(item.id)}
-              title={tabLocked(item.id) ? 'Finish your first clips to unlock' : item.label}
+              title={item.label}
               disabled={tabLocked(item.id)}
-              className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-input transition-colors ${isActive ? 'bg-paper3 text-ink' : 'text-muted hover:text-ink2 hover:bg-paper3/50'} ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed hover:bg-transparent hover:text-muted' : ''}`}
+              className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-brand/10 text-brand font-semibold'
+                  : 'text-muted hover:text-ink hover:bg-paper3/60'
+              } ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
+              <NavIcon size={18} className={`shrink-0 ${isActive ? 'text-brand' : ''}`} />
+              <span className="hidden lg:block flex-1 text-left truncate">{item.label}</span>
               {isActive && (
-                <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 bg-brass rounded-full" aria-hidden="true" />
+                <span className="w-1.5 h-1.5 rounded-full bg-brand hidden lg:block shrink-0" />
               )}
-              <NavIcon size={18} className={`shrink-0 ${isActive ? 'text-brass' : ''}`} />
-              <span className="text-sm lowercase hidden lg:block flex-1 text-left truncate">{item.label}</span>
-              {tabLocked(item.id)
-                ? <Lock size={12} className="shrink-0 hidden lg:block" />
-                : item.byok ? <span className="readout hidden lg:block">BYOK</span>
-                  : item.isNew ? <span className="badge-brass hidden lg:block">new</span> : null}
-              <span className="readout hidden lg:block">{item.ord}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-rule space-y-1">
+      <div className="p-4 border-t border-rule">
         <NavFooterLinks collapsed />
       </div>
     </div>
   );
 
-  // Mobile drawer: the complete nav, reachable from the header's menu button.
+  // Mobile drawer
   const MobileNavDrawer = () => (
     <div
       className="md:hidden fixed inset-0 z-[90] flex"
@@ -1850,10 +1908,7 @@ function App() {
       <div className="relative w-[17rem] max-w-[82vw] h-full bg-paper2 border-r border-rule flex flex-col animate-slide-in-left">
         <div className="flex items-center justify-between px-5 h-14 border-b border-rule shrink-0">
           <a href="#app" className="flex items-center gap-2.5" onClick={() => goToTab('dashboard')}>
-            <div className="w-7 h-7 bg-paper3 rounded-input overflow-hidden border border-rule shrink-0">
-              <img src="/logo-openshorts.png" alt="" className="w-full h-full object-cover" />
-            </div>
-            <span className="font-display lowercase text-lg text-ink">openshorts</span>
+            <BrandLogo />
           </a>
           <button
             onClick={() => setNavOpen(false)}
@@ -1874,36 +1929,32 @@ function App() {
                 onClick={() => goToTab(item.id)}
                 disabled={tabLocked(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                title={tabLocked(item.id) ? 'Finish your first clips to unlock' : undefined}
-                className={`relative w-full flex items-center gap-3 px-3 py-3 rounded-input transition-colors ${isActive ? 'bg-paper3 text-ink' : 'text-muted active:bg-paper3/60'} ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
+                className={`relative w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? 'bg-brand/10 text-brand font-semibold'
+                    : 'text-muted active:bg-paper3/60'
+                } ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
+                <NavIcon size={18} className={`shrink-0 ${isActive ? 'text-brand' : ''}`} />
+                <span className="flex-1 text-left truncate">{item.label}</span>
                 {isActive && (
-                  <span className="absolute left-0 top-2 bottom-2 w-0.5 bg-brass rounded-full" aria-hidden="true" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
                 )}
-                <NavIcon size={18} className={`shrink-0 ${isActive ? 'text-brass' : ''}`} />
-                <span className="text-[0.95rem] lowercase flex-1 text-left truncate">{item.label}</span>
-                {tabLocked(item.id)
-                  ? <Lock size={12} className="shrink-0" />
-                  : item.byok ? <span className="readout shrink-0">BYOK</span>
-                    : item.isNew ? <span className="badge-brass shrink-0">new</span> : null}
               </button>
             );
           })}
         </nav>
 
-        <div className="px-3 py-3 border-t border-rule space-y-0.5 safe-bottom shrink-0">
+        <div className="px-4 py-3 border-t border-rule safe-bottom shrink-0">
           <NavFooterLinks />
         </div>
       </div>
     </div>
   );
 
-  // Bottom tab bar: the four everyday destinations plus "more" for the rest.
-  // It is a flex sibling of the scrolling pane rather than `fixed`, so nothing
-  // ever hides behind it and no pane needs compensating padding.
+  // Bottom tab bar for mobile
   const MobileTabBar = () => {
     const tabs = navItems.filter((n) => n.primary);
-    const moreActive = !tabs.some((t) => t.id === activeTab);
     return (
       <nav className="md:hidden shrink-0 border-t border-rule bg-paper2/95 backdrop-blur-sm safe-bottom">
         <div className="flex items-stretch">
@@ -1913,27 +1964,18 @@ function App() {
             return (
               <button
                 key={item.id}
-                data-tutorial={item.id === 'dashboard' ? 'nav-clips' : undefined}
                 onClick={() => goToTab(item.id)}
                 disabled={tabLocked(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                title={tabLocked(item.id) ? 'Finish your first clips to unlock' : undefined}
-                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] transition-colors ${isActive ? 'text-ink' : 'text-muted active:text-ink2'} ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
+                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-2 min-h-[54px] transition-colors ${
+                  isActive ? 'text-brand font-semibold' : 'text-muted active:text-ink'
+                } ${tabLocked(item.id) ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
-                <NavIcon size={19} className={isActive ? 'text-brass' : ''} />
-                <span className="text-[10.5px] lowercase leading-none truncate max-w-full px-0.5">{item.short}</span>
+                <NavIcon size={18} className={isActive ? 'text-brand' : ''} />
+                <span className="text-[11px] leading-none truncate max-w-full px-0.5">{item.short}</span>
               </button>
             );
           })}
-          <button
-            onClick={() => setNavOpen(true)}
-            aria-label="more sections"
-            aria-expanded={navOpen}
-            className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] transition-colors ${moreActive ? 'text-ink' : 'text-muted active:text-ink2'}`}
-          >
-            <Menu size={19} className={moreActive ? 'text-brass' : ''} />
-            <span className="text-[10.5px] lowercase leading-none">more</span>
-          </button>
         </div>
       </nav>
     );
@@ -1949,24 +1991,27 @@ function App() {
 
       <main className="flex-1 min-w-0 flex flex-col h-full overflow-hidden relative">
         {/* Top Header */}
-        <header className="h-14 border-b border-rule bg-paper flex items-center justify-between gap-2 px-3 sm:px-6 shrink-0 z-10">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-            {/* Mobile: the drawer handle, and the section name the icon rail
-                used to carry. Without it a phone has no "where am I". */}
+        <header className="h-14 border-b border-rule bg-paper2 flex items-center justify-between gap-3 px-3 sm:px-6 shrink-0 z-10">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setNavOpen(true)}
               aria-label="open navigation"
-              className="md:hidden -ml-1 p-2 rounded-input text-muted active:bg-paper3 transition-colors shrink-0"
+              className="md:hidden -ml-1 p-2 rounded-lg text-muted active:bg-paper3 transition-colors shrink-0"
             >
               <Menu size={20} />
             </button>
-            <span data-tutorial="nav-clips" className="md:hidden font-display lowercase text-base text-ink truncate">
-              {activeNav?.label || 'openshorts'}
-            </span>
+            <div className="md:hidden">
+              <BrandLogo />
+            </div>
+            <div className="hidden md:flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted font-mono">
+                {activeNav?.label || 'Clip Studio'}
+              </span>
+            </div>
             {status !== 'idle' && (
               <button
                 onClick={handleReset}
-                className="btn-quiet px-3 py-1.5 text-xs shrink-0"
+                className="btn-quiet px-3 py-1.5 text-xs shrink-0 flex items-center gap-1.5"
                 aria-label="New Project"
               >
                 <Plus size={14} />
@@ -1975,56 +2020,31 @@ function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-            {userProfiles.length > 0 && (
-              <UserProfileSelector
-                profiles={userProfiles}
-                selectedUserId={uploadUserId}
-                onSelect={setUploadUserId}
-                onConnect={isManaged ? handleConnectSocials : undefined}
-              />
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            {/* Quick social connected badges */}
+            {socialStatus.youtube?.connected && (
+              <span className="badge-ok hidden lg:inline-flex text-[11px]" title={`YouTube: ${socialStatus.youtube.channel_title}`}>
+                <Youtube size={12} /> YouTube
+              </span>
+            )}
+            {socialStatus.instagram?.connected && (
+              <span className="badge-ok hidden lg:inline-flex text-[11px]" title={`Instagram: @${socialStatus.instagram.username}`}>
+                <Instagram size={12} /> Instagram
+              </span>
             )}
 
-            {/* Cloud: minutes meter + account/sign-in. For free users the meter
-                opens the upgrade modal — otherwise the only path to a plan is
-                failing against the quota wall. */}
-            {billingEnabled && isManaged && (
-              <UsageMeter onClick={() => {
-                if (plan === 'free') openUpsell({ source: 'meter' });
-                else { window.location.hash = '#/account'; }
-              }} />
-            )}
-            {billingEnabled && isSignedIn && !isManaged && (
-              <button onClick={() => setShowPlanChoice(true)}
-                className="btn-primary px-4 py-2 text-xs">
-                Choose a plan
-              </button>
-            )}
-            {billingEnabled && !isSignedIn && (
-              <button onClick={() => setShowLogin(true)}
-                className="btn-ghost px-4 py-2 text-xs">
-                Sign in
-              </button>
-            )}
-            {billingEnabled && isSignedIn && <ProfileMenu onUpgrade={isManaged ? openUpsell : null} />}
+            {/* Accessible Tri-Mode Theme Toggle */}
+            <ThemeToggle theme={theme} setTheme={setTheme} />
 
-            {/* Hidden below sm: the standing banner underneath already says the
-                same thing, and two warnings in a 360px header is just noise. */}
             {keysMissing && (
               <button
-                onClick={() => (billingEnabled && !isSignedIn ? setShowLogin(true) : goToTab('settings'))}
-                className="badge-warn hover:brightness-125 transition-all hidden sm:inline-flex"
-                title="Configure API keys or choose a plan"
+                onClick={() => goToTab('settings')}
+                className="badge-warn hover:brightness-110 transition-all hidden sm:inline-flex"
+                title="Configure LLM or API keys in Settings"
               >
                 <AlertTriangle size={12} />
-                <span className="hidden md:inline">
-                  {!geminiOk && !uploadPostKey
-                    ? 'Gemini & Upload-Post keys missing'
-                    : !geminiOk
-                      ? 'Gemini API Key Missing'
-                      : 'Upload-Post API Key Missing'}
-                </span>
-                <span className="md:hidden">keys missing</span>
+                <span className="hidden md:inline">API Keys Missing</span>
+                <span className="md:hidden">Keys</span>
               </button>
             )}
           </div>
@@ -2036,13 +2056,9 @@ function App() {
             <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 text-sm text-ink2 min-w-0 flex-1">
               <KeyRound size={16} className="shrink-0 text-warn mt-0.5 sm:mt-0" />
               <div className="min-w-0">
-                <span className="font-medium text-ink">Required API keys missing.</span>{' '}
-                <span className="text-muted">
-                  {!geminiOk && !uploadPostKey
-                    ? 'Set your Gemini and Upload-Post API keys to use OpenShorts.'
-                    : !geminiOk
-                      ? 'Set your Gemini API key to use OpenShorts.'
-                      : 'Set your Upload-Post API key to use OpenShorts.'}
+                <span className="font-medium text-ink">Required API configuration missing.</span>{' '}
+                <span className="text-muted text-xs">
+                  Configure your LLM provider or Groq API key in Settings to begin clipping.
                 </span>
               </div>
             </div>
@@ -2095,12 +2111,6 @@ function App() {
           </div>
         )}
 
-        {/* Included tools (Clip Generator, YouTube Studio): non-blocking trial prompt. */}
-        {gateThisTab && <TrialGate toolName={TOOL_NAMES[activeTab] || 'this'} />}
-
-        {/* Advanced tools (AI Shorts, AI Agent): BYOK fal.ai + ElevenLabs notice. */}
-        {advancedThisTab && <AdvancedBanner needsPlan={needsPlan} onKeys={() => goToTab('settings')} />}
-
         {/* Main Workspace */}
         <div className="flex-1 overflow-hidden relative">
 
@@ -2115,7 +2125,7 @@ function App() {
                   </p>
                   <h1 className="font-display lowercase text-2xl sm:text-3xl text-ink">Configuration</h1>
                   <p className="text-xs text-muted mt-1">
-                    All settings are persistently stored in SQLite (<code className="text-brass">/app/data/openshorts.db</code>).
+                    All settings are persistently stored in SQLite (<code className="text-brass">clipforge.db</code>).
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2280,7 +2290,7 @@ function App() {
                     <div className="p-3 bg-paper3/60 border border-rule rounded-input text-xs text-muted flex items-start gap-2.5">
                       <Shield size={16} className="text-ok shrink-0 mt-0.5" />
                       <div>
-                        <strong className="text-ink font-medium">Local Face Tracking Activated:</strong> When using an OpenAI-compatible provider, OpenShorts automatically disables Google GenAI layout calls and tracks active speakers using local OpenCV &amp; MediaPipe (<code className="text-brass">crop.py</code>).
+                        <strong className="text-ink font-medium">Local Face Tracking Activated:</strong> When using an OpenAI-compatible provider, ClipForge automatically disables Google GenAI layout calls and tracks active speakers using local OpenCV &amp; MediaPipe (<code className="text-brass">crop.py</code>).
                       </div>
                     </div>
 
@@ -2584,7 +2594,7 @@ function App() {
                           type="text"
                           value={backendSettings.s3_bucket_name || ''}
                           onChange={(e) => setBackendSettings({ ...backendSettings, s3_bucket_name: e.target.value })}
-                          placeholder="openshorts-videos"
+                          placeholder="clipforge-videos"
                           className="input-field text-sm font-mono w-full"
                         />
                       </div>
@@ -3036,28 +3046,17 @@ function App() {
                   the uploader — the whole point of the screen — below it. The
                   eyebrow, the display size and the gaps all shrink first. */}
               <div className="max-w-xl w-full text-center space-y-5 sm:space-y-8">
-                <div className="space-y-2.5 sm:space-y-4">
-                  <p className="eyebrow hidden sm:block">01 · CLIP GENERATOR</p>
-                  <h1 className="font-display lowercase text-3xl sm:text-4xl md:text-5xl text-ink">
-                    Create Viral Shorts
+                <div className="space-y-3">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-rule bg-paper2 shadow-xs text-xs font-medium text-muted">
+                    <span className="w-2 h-2 rounded-full bg-blue-600" />
+                    <span>ClipForge Studio · Automated Short Video Intelligence</span>
+                  </div>
+                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-ink tracking-tight">
+                    Generate Viral Shorts
                   </h1>
-                  <p className="text-muted text-[15px] sm:text-lg leading-snug sm:leading-normal max-w-sm sm:max-w-none mx-auto">
-                    Drop your long-form video below to instantly generate viral clips with AI.
+                  <p className="text-muted text-sm sm:text-base leading-relaxed max-w-lg mx-auto">
+                    Turn long-form videos and live broadcasts into vertical clips with auto-cut highlights, Hinglish/Hindi captions, and multi-channel publishing.
                   </p>
-                  {/* The same pipeline is an MCP server: point people at the
-                      one place that explains how to drive it from an agent. */}
-                  {!tutorialLock && (
-                  <p className="text-xs text-muted">
-                    Or let an agent do it:{' '}
-                    <a
-                      href={billingEnabled ? '#/account' : '#app'}
-                      onClick={(e) => { if (!billingEnabled) { e.preventDefault(); goToTab('settings'); } }}
-                      className="text-ink2 underline underline-offset-2 hover:text-brass transition-colors"
-                    >
-                      connect Claude, ChatGPT or n8n →
-                    </a>
-                  </p>
-                  )}
                 </div>
 
                 <MediaInput
@@ -3175,14 +3174,6 @@ function App() {
                   </div>
                 )}
 
-                {/* The render is dead time: the user is watching a progress bar
-                    with nothing to do, so this is where the one star ask goes. */}
-                {status === 'processing' && (
-                  <div className="my-3">
-                    <StarBanner message="Got a minute while this renders?" />
-                  </div>
-                )}
-
                 {/* Logs Terminal */}
                 <div className={`bg-paper rounded-card border border-rule overflow-hidden flex flex-col transition-all duration-500 ${status === 'complete' ? `min-h-0 opacity-50 hover:opacity-100 ${logsVisible ? 'h-32' : 'h-auto'}` : `flex-1 ${logsVisible ? 'min-h-[160px] sm:min-h-[200px]' : 'min-h-0 flex-none'}`}`}>
                   <button
@@ -3233,16 +3224,11 @@ function App() {
                     below. Wrapping them all together dropped a lone half-width
                     "schedule week" pill under the title on a phone. */}
                 <div className="mb-4 sm:mb-6 shrink-0 space-y-3">
-                  <h2 className="font-display lowercase text-lg sm:text-xl text-ink flex flex-wrap items-center gap-2">
+                  <h2 className="font-bold text-lg sm:text-xl text-ink flex flex-wrap items-center gap-2">
                     <span className="mr-auto">Generated Shorts</span>
                     {results?.clips?.length > 0 && (
-                      <span className="readout bg-paper3 px-2.5 py-1 rounded-full">
+                      <span className="readout bg-paper3 px-2.5 py-1 rounded-md">
                         {results.clips.length} Clips
-                      </span>
-                    )}
-                    {results?.cost_analysis && !isManaged && (
-                      <span className="readout bg-paper3 px-2.5 py-1 rounded-full" title={`Input: ${results.cost_analysis.input_tokens} | Output: ${results.cost_analysis.output_tokens}`}>
-                        GEMINI · ${results.cost_analysis.total_cost.toFixed(5)}
                       </span>
                     )}
                   </h2>
@@ -3255,8 +3241,8 @@ function App() {
                         title="Download all clips as a ZIP"
                       >
                         {downloadingAll
-                          ? <><Loader2 size={14} className="animate-spin" />zipping…</>
-                          : <><Download size={14} />download all</>}
+                          ? <><Loader2 size={14} className="animate-spin" /> Zipping…</>
+                          : <><Download size={14} /> Download All ZIP</>}
                       </button>
                       {results.clips.length > 1 && (
                         <button
@@ -3264,7 +3250,7 @@ function App() {
                           className="btn-primary px-4 py-2 text-xs"
                         >
                           <Calendar size={14} />
-                          schedule week
+                          Schedule Week
                         </button>
                       )}
                     </div>
@@ -3273,39 +3259,6 @@ function App() {
 
                 {status === 'complete' && results?.clips?.length > 0 && (
                   <div className="mb-2 space-y-2">
-                    {/* Partial job: the clips on screen come from the first N
-                        minutes only. Say so, and sell the rest of the video. */}
-                    {partialJob && !partialJob.chosen && (
-                      <button
-                        onClick={() => openUpsell({ source: 'partial_banner', partialJob })}
-                        className="w-full text-left px-3 py-2.5 rounded-input bg-paper3 border border-brass/40 hover:border-brass text-sm transition-colors"
-                      >
-                        <span className="text-ink">These clips come from the first {partialJob.processed_minutes} of {partialJob.total_minutes} minutes.</span>{' '}
-                        <span className="text-brass font-medium">Clip the whole video →</span>
-                      </button>
-                    )}
-                    {/* Peak-moment upsell: they just SAW their clips — sell while
-                        they're proud of the result, before asking for stars. */}
-                    {firstVideoJob && !partialJob && (
-                      <button
-                        onClick={() => openUpsell({ source: 'first_video_banner' })}
-                        className="w-full text-left px-3 py-2.5 rounded-input bg-paper3 border border-brass/40 hover:border-brass text-sm transition-colors"
-                      >
-                        <span className="text-ink">Your first video is on us: we clipped all of it.</span>{' '}
-                        <span className="text-muted">That used this month's free minutes.</span>{' '}
-                        <span className="text-brass font-medium">Keep clipping →</span>
-                      </button>
-                    )}
-                    {plan === 'free' && (!partialJob || partialJob.chosen) && !firstVideoJob && (
-                      <button
-                        onClick={() => openUpsell({ source: 'results_banner' })}
-                        className="w-full text-left px-3 py-2.5 rounded-input bg-paper3 border border-brass/40 hover:border-brass text-sm transition-colors"
-                      >
-                        <span className="text-ink">Like these clips?</span>{' '}
-                        <span className="text-muted">Upgrade and these exact clips lose the watermark on the spot, and stay for good.</span>{' '}
-                        <span className="text-brass font-medium">Remove the watermark →</span>
-                      </button>
-                    )}
                     {showAutopilotNudge && (
                       <div className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-input bg-paper3 border border-rule text-sm">
                         <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -3477,7 +3430,7 @@ function App() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            OpenShorts needs an AI provider configured to detect viral moments in your videos.
+            ClipForge needs an AI provider configured to detect viral moments in your videos.
           </p>
 
           {/* Gemini block */}
@@ -3578,16 +3531,6 @@ function App() {
           onDismissCelebrate={finishTutorial}
         />
       )}
-      {showWmNotice && (
-        <WatermarkModal
-          source="results"
-          jobId={jobId}
-          previewSrc={results?.clips?.[0]?.video_url ? getApiUrl(results.clips[0].video_url) : null}
-          onUpgrade={openUpsell}
-          onClose={() => setShowWmNotice(false)}
-        />
-      )}
-
       <React.Suspense fallback={null}>
         {showScheduleWeek && (
           <ScheduleWeekModal
@@ -3619,27 +3562,6 @@ function App() {
           />
         )}
         {showLogin && <LoginModal onClose={() => setShowLogin(false)} queued={typeof peekPendingJob()?.data?.payload === 'string'} />}
-        {showPlanChoice && <PlanChoiceModal onClose={() => setShowPlanChoice(false)} />}
-        {showTopUp && (
-          <TopUpModal
-            onClose={() => setShowTopUp(false)}
-            required={topUpInfo.required}
-            remaining={topUpInfo.remaining}
-            partialMinutes={topUpInfo.partialMinutes}
-            onPartial={topUpInfo.onPartial}
-            context={topUpInfo.context || 'wall'}
-            source={topUpInfo.source}
-            highlight={topUpInfo.highlight}
-            partialJob={topUpInfo.partialJob}
-          />
-        )}
-        {showTrialUpgrade && (
-          <TrialUpgradeModal
-            plan={plan}
-            onActivated={refreshMe}
-            onClose={() => setShowTrialUpgrade(false)}
-          />
-        )}
       </React.Suspense>
     </div>
   );

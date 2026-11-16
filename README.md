@@ -1,9 +1,9 @@
-# OpenShorts 🎬
+# ClipForge 🎬
 
 **The high-performance, open-source AI video platform & OpusClip alternative.**  
 Turn long videos and live streams into viral 9:16 Shorts, TikToks, and Instagram Reels. Self-host free on your own VPS with Docker Compose or Dokploy, with zero watermarks and full privacy.
 
-| Feature | OpenShorts (Self-Hosted) | OpusClip | Vizard | Klap |
+| Feature | ClipForge (Self-Hosted) | OpusClip | Vizard | Klap |
 |---|---|---|---|---|
 | **License** | **Open Source (MIT)** | Proprietary | Proprietary | Proprietary |
 | **Watermark** | **None (Never)** | Watermarked on free | Watermarked on free | Watermarked on free |
@@ -18,7 +18,7 @@ Turn long videos and live streams into viral 9:16 Shorts, TikToks, and Instagram
 
 ## What's New in This Version
 
-- 🗄️ **Persistent SQLite Database (`data/openshorts.db`)**: Settings, API keys, OAuth credentials, and publish logs now persist across container restarts and redeployments with automatic schema migrations.
+- 🗄️ **Persistent SQLite Database (`data/clipforge.db`)**: Settings, API keys, OAuth credentials, and publish logs now persist across container restarts and redeployments with automatic schema migrations.
 - 🤖 **Universal OpenAI-Compatible LLM Backend**: Use **any** OpenAI-compatible provider (Ollama, vLLM, LM Studio, DeepSeek, LocalAI, OpenRouter). Features dynamic model auto-discovery (`/v1/models`) and instant connectivity testing in the Settings UI.
 - 🇮🇳 **Hindi Subtitles & Phonetic Hinglish Transliteration**:
   - Bundled **Noto Sans Devanagari Bold** font eliminates tofu/box artifacts in Hindi videos.
@@ -43,13 +43,13 @@ Turn long videos and live streams into viral 9:16 Shorts, TikToks, and Instagram
 
 ## 🚀 100% Dokploy Deployment Guide (Step-by-Step)
 
-Deploying OpenShorts on Dokploy takes less than 3 minutes using Docker Compose.
+Deploying ClipForge on Dokploy takes less than 3 minutes using Docker Compose.
 
 ### Step 1: Create a Compose Application in Dokploy
 1. Log in to your **Dokploy** dashboard.
 2. Select your Project and Environment.
 3. Click **Create Service** and select **Compose**.
-4. Set a name for your application (e.g., `openshorts`).
+4. Set a name for your application (e.g., `clipforge`).
 
 ### Step 2: Configure Git Source
 In the Compose application settings:
@@ -61,7 +61,7 @@ In the Compose application settings:
 ### Step 3: Exact Domain Configuration in Dokploy (Single Domain Setup)
 
 > [!IMPORTANT]
-> OpenShorts features an integrated Nginx reverse proxy inside the `frontend` container that routes all API (`/api/`), video delivery (`/videos/`), thumbnails (`/thumbnails/`), and Remotion renders (`/render/`) automatically. You only need to configure **ONE** domain!
+> ClipForge features an integrated Nginx reverse proxy inside the `frontend` container that routes all API (`/api/`), video delivery (`/videos/`), thumbnails (`/thumbnails/`), and Remotion renders (`/render/`) automatically. You only need to configure **ONE** domain!
 
 In Dokploy under the **Domains** tab of your Compose application:
 1. Click **Add Domain**.
@@ -121,8 +121,8 @@ LLM_API_KEY=your_api_key_here
 
 ### Step 5: Persistent Volumes
 Dokploy automatically provisions the named volumes declared in `docker-compose.yml`:
-- `openshorts_data`: Persists the SQLite database (`openshorts.db`), settings, and OAuth tokens.
-- `openshorts_output`: Stores generated video clips and thumbnails shared between backend and renderer.
+- `clipforge_data`: Persists the SQLite database (`clipforge.db`), settings, and OAuth tokens.
+- `clipforge_output`: Stores generated video clips and thumbnails shared between backend and renderer.
 
 Click **Deploy**! Once deployment completes, open your domain in the browser to start clipping.
 
@@ -180,7 +180,7 @@ Navigate to **`http://localhost:5173`** in your browser.
 
 ### 2. Live Stream Auto-Clipper
 - Paste YouTube Live or Twitch stream links.
-- OpenShorts polls active broadcasts, downloads rolling 5-minute audio/video windows, detects sound spikes, transcribes speech, selects viral moments via LLM, and produces ready-to-share vertical clips while the streamer is still live!
+- ClipForge polls active broadcasts, downloads rolling 5-minute audio/video windows, detects sound spikes, transcribes speech, selects viral moments via LLM, and produces ready-to-share vertical clips while the streamer is still live!
 
 ### 3. AI UGC Shorts Creator
 - Generate complete video ads from a text prompt or product URL.
@@ -193,14 +193,14 @@ Navigate to **`http://localhost:5173`** in your browser.
 
 ## 🤖 MCP Server & API Automation
 
-OpenShorts includes a built-in **Model Context Protocol (MCP)** server for AI agents (Cursor, Claude Desktop, Claude Code, Windsurf, n8n):
+ClipForge includes a built-in **Model Context Protocol (MCP)** server for AI agents (Cursor, Claude Desktop, Claude Code, Windsurf, n8n):
 
 ```bash
 # Connect local MCP server to Claude Code or Cursor
-claude mcp add --transport http openshorts http://localhost:8000/mcp
+claude mcp add --transport http clipforge http://localhost:8000/mcp
 
 # Or via stdio transport:
-claude mcp add openshorts -- python mcp_stdio.py
+claude mcp add clipforge -- python mcp_stdio.py
 ```
 
 ### Available Tools:
@@ -216,7 +216,7 @@ claude mcp add openshorts -- python mcp_stdio.py
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DB_PATH` | `./data/openshorts.db` | Custom path for SQLite database file |
+| `DB_PATH` | `./data/clipforge.db` | Custom path for SQLite database file |
 | `LLM_PROVIDER` | `openai` | `openai` (or `gemini`) for moment picker |
 | `LLM_BASE_URL` | - | Base URL for OpenAI-compatible LLM (e.g. `http://localhost:11434/v1`) |
 | `LLM_API_KEY` | - | Optional API key for custom LLM provider |
@@ -232,5 +232,5 @@ claude mcp add openshorts -- python mcp_stdio.py
 
 ## 🛡️ License
 
-Core OpenShorts application is released under the **MIT License**.  
+Core ClipForge application is released under the **MIT License**.  
 Free for personal and commercial self-hosting.

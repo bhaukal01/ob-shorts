@@ -7,7 +7,6 @@ import SubtitleModal from './SubtitleModal';
 import HookModal from './HookModal';
 import Modal from './ui/Modal';
 import SegmentedControl from './ui/SegmentedControl';
-import WatermarkModal, { watermarkNoticeDismissed } from './WatermarkModal';
 import TikTokDraftNotice from './TikTokDraftNotice';
 import { useAuth } from '../contexts/AuthContext';
 import { renderInBrowser } from '../lib/renderInBrowser';
@@ -80,7 +79,6 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
     }, [clip.why]);
     const [showDescModal, setShowDescModal] = useState(false);
     const [showSubtitleModal, setShowSubtitleModal] = useState(false);
-    const [showWatermarkModal, setShowWatermarkModal] = useState(false);
     const { plan } = useAuth();
     const videoRef = React.useRef(null);
     // Pristine base clip (no burned subtitles/hook), stable regardless of how
@@ -907,7 +905,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                     {Number.isFinite(clip.predicted_score) && (
                         <span
                             className="bg-black/70 font-mono text-micro uppercase px-2 py-1 rounded-full flex items-center gap-1"
-                            title="openshorts' prediction of how well this clip will perform, from 0 to 100"
+                            title="ClipForge prediction of how well this clip will perform, from 0 to 100"
                         >
                             <TrendingUp size={11} className="shrink-0 text-muted" />
                             <span className="text-muted">viral</span>
@@ -951,7 +949,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                                 ref={whyRef}
                                 className={`text-xs text-muted leading-snug line-clamp-2 break-words ${whyClamped ? 'cursor-pointer' : ''}`}
                                 onClick={() => whyClamped && setWhyOpen(v => !v)}
-                                aria-label="why openshorts picked this moment"
+                                aria-label="why this moment was selected"
                             >
                                 {clip.why}
                             </p>
@@ -1093,12 +1091,6 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                     <button
                         onClick={(e) => {
                             e.preventDefault();
-                            // Free clips are watermarked — surface the upsell once
-                            // before the first download, then get out of the way.
-                            if (plan === 'free' && !watermarkNoticeDismissed(jobId)) {
-                                setShowWatermarkModal(true);
-                                return;
-                            }
                             downloadClip();
                         }}
                         className={`${QUIET_BTN}${onEditClip ? ' col-span-2' : ''}`}
@@ -1464,16 +1456,6 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                 burnedHook={burnedHook}
                 onRemove={burnedHook ? handleRemoveHook : null}
             />
-
-            {showWatermarkModal && (
-                <WatermarkModal
-                    source="download"
-                    jobId={jobId}
-                    onUpgrade={onUpgrade}
-                    onClose={() => setShowWatermarkModal(false)}
-                    onContinue={downloadClip}
-                />
-            )}
 
         </div>
     );

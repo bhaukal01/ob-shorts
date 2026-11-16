@@ -94,14 +94,14 @@ export const COMPONENTS_CSS = `
 /** The answer at a glance: 3-4 tiles of { k: label, v: value, s: detail }. */
 /** Non-affiliation line for pages that name a game, publisher or platform. */
 export const trademarkNote = (marks, owners) =>
-  `<p class="tm-note">OpenShorts is an independent tool and is not affiliated with, endorsed or sponsored by ${owners}. ${marks} ${marks.includes(',') || marks.includes(' and ') ? 'are trademarks of their respective owners' : 'is a trademark of its owner'}, used here only to say which footage the tool works with.</p>`
+  `<p class="tm-note">ClipForge is an independent tool and is not affiliated with, endorsed or sponsored by ${owners}. ${marks} ${marks.includes(',') || marks.includes(' and ') ? 'are trademarks of their respective owners' : 'is a trademark of its owner'}, used here only to say which footage the tool works with.</p>`
 
 export const factTiles = (facts) =>
   `<div class="facts">${facts
     .map((f) => `<div class="fact"><span class="k">${esc(f.k)}</span><span class="v">${esc(f.v)}</span><span class="s">${esc(f.s || '')}</span></div>`)
     .join('')}</div>`
 
-/* Real product output: a 16:9 source excerpt next to the 9:16 clip OpenShorts
+/* Real product output: a 16:9 source excerpt next to the 9:16 clip ClipForge
  * made from it. Every source here is Creative Commons Attribution or our own,
  * and the credit line under the block is what the licence asks for. */
 export const DEMOS = {
@@ -121,7 +121,7 @@ export const DEMOS = {
   },
 }
 
-/* Real product output: the original and the clip OpenShorts made from it,
+/* Real product output: the original and the clip ClipForge made from it,
  * side by side and in sync, in one video. Every source is Creative Commons
  * Attribution and the credit line under the block is what the licence asks
  * for. */
@@ -130,9 +130,9 @@ export const demoBlock = (which = 'split', caption) => {
   return `
 <figure class="demo">
   <video src="${d.video}" poster="${d.poster}" autoplay muted loop playsinline preload="none" width="960" height="540"
-    aria-label="Original video next to the vertical clip OpenShorts made from it"></video>
+    aria-label="Original video next to the vertical clip ClipForge made from it"></video>
 </figure>
-<p class="calc-note">Real OpenShorts output, not a mock-up. ${esc(caption || d.caption)} Source: ${d.credit}.</p>`
+<p class="calc-note">Real ClipForge output, not a mock-up. ${esc(caption || d.caption)} Source: ${d.credit}.</p>`
 }
 
 /** Two workflows side by side. Steps marked { you: true } need a human. */
@@ -148,7 +148,7 @@ export const flowCompare = (them, us) => {
 export const verdictCards = (name, pickThem, pickUs) => `
 <div class="verdict">
   <div><strong>Pick ${esc(name)} if</strong><ul>${pickThem.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-  <div class="us"><strong>Pick OpenShorts if</strong><ul>${pickUs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+  <div class="us"><strong>Pick ClipForge if</strong><ul>${pickUs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
 </div>`
 
 /* --- Cost calculator ------------------------------------------------------
@@ -180,7 +180,7 @@ const barsHtml = (tools, minutes, billing) => {
       const label = r
         ? `${money(r.price)}/mo · ${r.plan}${r.watermark ? ' · watermark' : ''}`
         : 'No published plan, custom pricing'
-      return `<li class="${t.startsWith('openshorts') ? 'us' : ''}" data-tool="${esc(t)}"><span class="bt">${esc(m.name)}<small>${esc(m.unit)}</small></span><span class="track"><span class="fill" style="width:${w}%"></span><span class="val${w < 45 ? ' ext' : ''}"${w < 45 ? ` style="left:calc(${w}% + .6rem)"` : ''}>${esc(label)}</span></span></li>`
+      return `<li class="${t.startsWith('clipforge') ? 'us' : ''}" data-tool="${esc(t)}"><span class="bt">${esc(m.name)}<small>${esc(m.unit)}</small></span><span class="track"><span class="fill" style="width:${w}%"></span><span class="val${w < 45 ? ' ext' : ''}"${w < 45 ? ` style="left:calc(${w}% + .6rem)"` : ''}>${esc(label)}</span></span></li>`
     })
     .join('')
 }
@@ -188,7 +188,7 @@ const barsHtml = (tools, minutes, billing) => {
 let calcCount = 0
 export function costCalculator(tools, { minutes = 300, note } = {}) {
   const id = `calc${++calcCount}`
-  const list = ['openshorts-self', 'openshorts', ...tools.filter((t) => !t.startsWith('openshorts') && PRICE_MODELS[t])]
+  const list = ['clipforge-self', 'clipforge', ...tools.filter((t) => !t.startsWith('clipforge') && PRICE_MODELS[t])]
   const models = Object.fromEntries(list.map((t) => [t, PRICE_MODELS[t]]))
   const checked = list.map((t) => PRICE_MODELS[t].checked).filter(Boolean).sort()[0]
   return `

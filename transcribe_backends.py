@@ -418,7 +418,7 @@ def _plain_parakeet_dir():
         raise RuntimeError("Parakeet is not in the hub cache")
     snap = os.path.dirname(cached)
     root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(snap))),
-                        "openshorts-plain")
+                        "clipforge-plain")
     target = os.path.join(root, f"parakeet-{os.path.basename(snap)}")
     if os.path.isdir(target):
         return target
@@ -916,7 +916,7 @@ def transcribe_media(media_path):
     # actionable reason instead.
     if not _has_audio_stream(media_path):
         raise NoAudioError(
-            "This video has no audio track. OpenShorts finds viral moments from "
+            "This video has no audio track. ClipForge finds viral moments from "
             "speech, so it needs a video with audio.")
 
     # 1. Check if Groq Cloud Whisper API is selected or configured

@@ -1,28 +1,28 @@
-# OpenShorts + n8n
+# ClipForge + n8n
 
 Two importable workflows, from a one-shot clipper to a full channel autopilot.
-Both work out of the box with [OpenShorts Cloud](https://www.openshorts.app/)
-(free tier: 20 min of video, paid plans from $12/mo). OpenShorts is also open
+Both work out of the box with [ClipForge Cloud](https://www.clipforge.studio/)
+(free tier: 20 min of video, paid plans from $12/mo). ClipForge is also open
 source: self-hosters can point either workflow at their own instance by
 changing the base URL (needs a GPU box, your own Gemini key, and your own
 [Upload-Post](https://www.upload-post.com/) account for the posting steps).
 
 | Workflow | What it does | Credentials |
 |---|---|---|
-| `openshorts-clip-and-notify.json` | A video URL goes in through a form, clips come back on a signed webhook. No polling. | OpenShorts API key |
-| `openshorts-content-machine.json` | Your YouTube channel on autopilot: daily clipping, approval buttons in Telegram, drip-scheduled posting, weekly analytics digest. | OpenShorts API key + Telegram bot |
+| `clipforge-clip-and-notify.json` | A video URL goes in through a form, clips come back on a signed webhook. No polling. | ClipForge API key |
+| `clipforge-content-machine.json` | Your YouTube channel on autopilot: daily clipping, approval buttons in Telegram, drip-scheduled posting, weekly analytics digest. | ClipForge API key + Telegram bot |
 
 ## Shared setup
 
 1. In n8n: **Workflows → Import from file** → pick the workflow.
-2. Create a **Header Auth** credential named `OpenShorts API key`:
+2. Create a **Header Auth** credential named `ClipForge API key`:
    - Name: `Authorization`
    - Value: `Bearer osk_...` (create the key in your account page at
-     [openshorts.app](https://www.openshorts.app/))
+     [clipforge.studio](https://www.clipforge.studio/))
 3. Open the **Clips ready (webhook)** node, copy its production URL, and paste
-   it as `webhook_url` inside the **Start OpenShorts job** node body.
-4. Optional: change `webhook_secret`. OpenShorts signs the webhook body with
-   HMAC-SHA256 and sends it as `X-OpenShorts-Signature: sha256=<hex>`; verify
+   it as `webhook_url` inside the **Start ClipForge job** node body.
+4. Optional: change `webhook_secret`. ClipForge signs the webhook body with
+   HMAC-SHA256 and sends it as `X-ClipForge-Signature: sha256=<hex>`; verify
    it in a Code node with:
 
    ```javascript
@@ -35,7 +35,7 @@ changing the base URL (needs a GPU box, your own Gemini key, and your own
 
 ## The Content Machine
 
-`openshorts-content-machine.json` runs your channel in four acts:
+`clipforge-content-machine.json` runs your channel in four acts:
 
 1. **Watch** — once a day it reads your channel's RSS feed
    (`https://www.youtube.com/feeds/videos.xml?channel_id=UC...`) and clips
@@ -48,7 +48,7 @@ changing the base URL (needs a GPU box, your own Gemini key, and your own
    back to a link message with the same buttons.
 3. **Drip-publish** — each approved clip takes the next free daily slot and is
    scheduled through `POST /api/social/post` to every account you connected in
-   OpenShorts (TikTok, Instagram, YouTube). Approve five clips today, fill five
+   ClipForge (TikTok, Instagram, YouTube). Approve five clips today, fill five
    days of content. The slot comes from the queue the server actually holds
    (`GET /api/social/scheduled`), so two clips approved seconds apart cannot
    book the same one.
@@ -63,7 +63,7 @@ Machine-specific setup, all inside sticky notes on the canvas:
   `Telegram bot` credential, and replace `YOUR_TELEGRAM_CHAT_ID` in the
   notification nodes (message your bot, then check
   `api.telegram.org/bot<token>/getUpdates` for your chat id).
-- Connect your social accounts in your OpenShorts account page (Cloud) — the
+- Connect your social accounts in your ClipForge account page (Cloud) — the
   posting step uses them directly; no extra social credentials in n8n.
 
 Note: the machine remembers which videos it already processed in n8n workflow
@@ -99,6 +99,6 @@ Publishing queue: `GET /api/social/scheduled`, and
 Analytics of what you published: `GET /api/social/analytics` (profile totals),
 `GET /api/social/analytics/posts` (per-post metrics),
 `GET /api/social/analytics/impressions` (windowed totals, `period=last_week`).
-Full API reference: [api.openshorts.app/docs](https://api.openshorts.app/docs).
+Full API reference: [api.clipforge.studio/docs](https://api.clipforge.studio/docs).
 Agent-native version of the same pipeline (MCP):
-[openshorts.app/mcp](https://www.openshorts.app/mcp).
+[clipforge.studio/mcp](https://www.clipforge.studio/mcp).

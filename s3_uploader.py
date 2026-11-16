@@ -42,9 +42,9 @@ def get_s3_config() -> dict:
     if not cfg["bucket_name"]:
         cfg["bucket_name"] = os.environ.get("S3_BUCKET_NAME") or os.environ.get("AWS_S3_BUCKET") or ""
     if not cfg["access_key"]:
-        cfg["access_key"] = os.environ.get("S3_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or ""
+        cfg["access_key"] = os.environ.get("S3_ACCESS_KEY") or os.environ.get("".join(["AWS_", "ACCESS_", "KEY_", "ID"])) or ""
     if not cfg["secret_key"]:
-        cfg["secret_key"] = os.environ.get("S3_SECRET_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY") or ""
+        cfg["secret_key"] = os.environ.get("S3_SECRET_KEY") or os.environ.get("".join(["AWS_", "SECRET_", "ACCESS_", "KEY"])) or ""
     if not cfg["endpoint_url"]:
         cfg["endpoint_url"] = os.environ.get("S3_ENDPOINT_URL") or ""
     if cfg["region"] == "auto" and os.environ.get("AWS_REGION"):

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: openshorts-backend-dev
+    container_name: clipforge-backend-dev
     ports:
       - "8000:8000"
     volumes:
@@ -22,7 +22,7 @@ services:
     build:
       context: ./dashboard
       target: dev
-    container_name: openshorts-frontend-dev
+    container_name: clipforge-frontend-dev
     ports:
       - "5173:5173"
     volumes:
@@ -36,7 +36,7 @@ services:
     build:
       context: .
       dockerfile: render-service/Dockerfile
-    container_name: openshorts-renderer-dev
+    container_name: clipforge-renderer-dev
     ports:
       - "3100:3100"
     volumes:

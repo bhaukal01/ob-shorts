@@ -62,9 +62,9 @@ def _append_stream_log(job_id: str, msg: str) -> None:
         if job_id in _STREAM_ACTIVE_JOBS:
             _STREAM_ACTIVE_JOBS[job_id]["logs"].append(msg)
     try:
-        import app
-        if job_id in app.jobs:
-            app.jobs[job_id].setdefault("logs", []).append(msg)
+        app_mod = sys.modules.get("app")
+        if app_mod and job_id in app_mod.jobs:
+            app_mod.jobs[job_id].setdefault("logs", []).append(msg)
     except Exception:
         pass
 
@@ -605,13 +605,13 @@ def _render_single_stream_clip(
                 _STREAM_ACTIVE_JOBS[job_id]["logs"].append(f"✨ Clip #{clip_num} published: {clip_title}")
 
         try:
-            import app
-            if job_id in app.jobs:
-                app.jobs[job_id]["result"]["clips"] = existing_shorts
-                if "ready_files" not in app.jobs[job_id]:
-                    app.jobs[job_id]["ready_files"] = {}
-                app.jobs[job_id]["ready_files"][os.path.basename(final_clip)] = new_short
-                app.jobs[job_id].setdefault("logs", []).append(f"✨ Clip #{clip_num} published: {clip_title}")
+            app_mod = sys.modules.get("app")
+            if app_mod and job_id in app_mod.jobs:
+                app_mod.jobs[job_id]["result"]["clips"] = existing_shorts
+                if "ready_files" not in app_mod.jobs[job_id]:
+                    app_mod.jobs[job_id]["ready_files"] = {}
+                app_mod.jobs[job_id]["ready_files"][os.path.basename(final_clip)] = new_short
+                app_mod.jobs[job_id].setdefault("logs", []).append(f"✨ Clip #{clip_num} published: {clip_title}")
         except Exception:
             pass
 
@@ -716,10 +716,10 @@ def _finalize_stream_project(job_id: str) -> None:
             _STREAM_ACTIVE_JOBS[job_id]["status"] = "completed"
 
     try:
-        import app
-        if job_id in app.jobs:
-            app.jobs[job_id]["status"] = "completed"
-            app.jobs[job_id].setdefault("logs", []).append("🏁 All clips rendered and published to S3. Live stream project completed.")
+        app_mod = sys.modules.get("app")
+        if app_mod and job_id in app_mod.jobs:
+            app_mod.jobs[job_id]["status"] = "completed"
+            app_mod.jobs[job_id].setdefault("logs", []).append("🏁 All clips rendered and published to S3. Live stream project completed.")
     except Exception:
         pass
 
@@ -1137,9 +1137,9 @@ def dispatch_video_upload_job(mon: Dict[str, Any], video_info: Dict[str, Any]) -
     auto_post = bool(mon.get("auto_post", 0))
 
     try:
-        import app
-        if hasattr(app, "submit_monitored_video_job"):
-            return app.submit_monitored_video_job(
+        app_mod = sys.modules.get("app")
+        if app_mod and hasattr(app_mod, "submit_monitored_video_job"):
+            return app_mod.submit_monitored_video_job(
                 video_url=vid_url,
                 title=title,
                 layout=layout,
