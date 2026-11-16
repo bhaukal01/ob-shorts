@@ -3,13 +3,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clipforge"
+name = "clipsnipr"
 version = "0.1.0"
-description = "CLI for ClipForge: clip long videos into vertical shorts and publish them, from the terminal"
+description = "CLI for ClipSnipr: clip long videos into vertical shorts and publish them, from the terminal"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [{ name = "ClipForge" }]
+authors = [{ name = "ClipSnipr" }]
 keywords = ["video", "clips", "shorts", "ai", "tiktok", "youtube-shorts", "cli"]
 classifiers = [
   "Environment :: Console",
@@ -19,12 +19,12 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://www.clipforge.studio"
-Source = "https://github.com/mutonby/clipforge"
-Documentation = "https://www.clipforge.studio/mcp"
+Homepage = "https://www.clipsnipr.studio"
+Source = "https://github.com/mutonby/clipsnipr"
+Documentation = "https://www.clipsnipr.studio/mcp"
 
 [project.scripts]
-clipforge = "clipforge_cli:main"
+clipsnipr = "clipsnipr_cli:main"
 
 [tool.setuptools]
-py-modules = ["clipforge_cli"]
+py-modules = ["clipsnipr_cli"]

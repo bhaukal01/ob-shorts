@@ -1,21 +1,21 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.mutonby/clipforge",
+  "name": "io.github.mutonby/clipsnipr",
   "description": "Turn long videos into viral vertical shorts and publish them to TikTok, Instagram and YouTube.",
   "version": "1.0.0",
-  "websiteUrl": "https://www.clipforge.studio/mcp",
+  "websiteUrl": "https://www.clipsnipr.studio/mcp",
   "repository": {
-    "url": "https://github.com/mutonby/clipforge",
+    "url": "https://github.com/mutonby/clipsnipr",
     "source": "github"
   },
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://mcp.clipforge.studio/mcp",
+      "url": "https://mcp.clipsnipr.studio/mcp",
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer <API key>. Create the osk_ key in your account page at clipforge.studio; the self-hosted MIT edition serves the same endpoint locally with no key.",
+          "description": "Bearer <API key>. Create the osk_ key in your account page at clipsnipr.studio; the self-hosted MIT edition serves the same endpoint locally with no key.",
           "isRequired": true,
           "isSecret": true,
           "format": "string"

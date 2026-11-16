@@ -15,7 +15,11 @@ export default {
         ink2: "var(--color-ink-2)",
         muted: "var(--color-muted)",
         brand: "var(--color-accent)",
-        brass: "var(--color-accent)", // aliased to brand accent for seamless migration
+        sniprorange: "var(--color-brand-orange)",
+        brandblue: "var(--color-brand-blue)",
+        brandgreen: "var(--color-brand-green)",
+        brandred: "var(--color-brand-red)",
+        brass: "var(--color-brand-blue)", // normal blue
         brassink: "var(--color-accent-ink)",
         coral: "var(--color-danger)",
         ok: "var(--color-ok)",

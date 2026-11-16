@@ -14,7 +14,7 @@ const fmtDay = (iso) => {
     : '';
 };
 
-// Post-publication analytics: what the clips published from ClipForge did out
+// Post-publication analytics: what the clips published from ClipSnipr did out
 // there. The server keeps only posts that went out through Upload-Post in the
 // last 30 days (the vendor cache also holds the creator's native posts, with
 // lifetime views), so every number is "views so far" on those posts, as of the

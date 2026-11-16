@@ -536,15 +536,15 @@ AI_XMP_PACKET = (
     ' xmlns:dc="http://purl.org/dc/elements/1.1/"'
     ' Iptc4xmpExt:DigitalSourceType='
     '"http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"'
-    ' xmp:CreatorTool="ClipForge (clipforge.studio)">'
+    ' xmp:CreatorTool="ClipSnipr (clipsnipr.studio)">'
     '<dc:description><rdf:Alt><rdf:li xml:lang="x-default">'
-    'AI-generated image produced with ClipForge (clipforge.studio)'
+    'AI-generated image produced with ClipSnipr (clipsnipr.studio)'
     '</rdf:li></rdf:Alt></dc:description>'
     '</rdf:Description></rdf:RDF></x:xmpmeta>'
     '<?xpacket end="w"?>'
 ).encode("utf-8")
 
-AI_SOFTWARE_TAG = "ClipForge (clipforge.studio) — AI-generated image"
+AI_SOFTWARE_TAG = "ClipSnipr (clipsnipr.studio) — AI-generated image"
 
 
 def _ai_save_kwargs(img):

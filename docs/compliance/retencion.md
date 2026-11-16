@@ -1,9 +1,9 @@
 # Plazos de conservación reales
 
-**ClipForge Cloud (clipforge.studio) · TONVI TECH SL, B-19780394 · versión de 4 de septiembre de 2026**
+**ClipSnipr Cloud (clipsnipr.studio) · TONVI TECH SL, B-19780394 · versión de 4 de septiembre de 2026**
 
 Esta tabla es la versión larga del apartado 5 de la
-[política de privacidad](https://www.clipforge.studio/privacidad). Cada fila
+[política de privacidad](https://www.clipsnipr.studio/privacidad). Cada fila
 nombra **el código que aplica el plazo**, porque un plazo que no está en el
 código no es un plazo: es una intención. Si cambias una constante, cambia esta
 tabla y la política en el mismo commit.

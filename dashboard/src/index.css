@@ -9,7 +9,7 @@
   }
 
   body {
-    @apply bg-paper text-ink2 antialiased;
+    @apply bg-paper text-ink antialiased;
     font-family: var(--font-body);
     font-variant-numeric: tabular-nums;
     overflow-x: hidden;
@@ -28,12 +28,12 @@
   }
 
   ::selection {
-    background: var(--color-accent);
-    color: var(--color-accent-ink);
+    background: var(--color-brand-blue);
+    color: #ffffff;
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-focus);
+    outline: 2px solid var(--color-brand-blue);
     outline-offset: 2px;
   }
 }
@@ -88,21 +88,33 @@
   }
   .input-field::placeholder { color: var(--color-muted); opacity: 0.8; }
   .input-field:focus {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    border-color: var(--color-brand-blue);
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
   }
 
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold tracking-tight;
-    background-color: var(--color-accent);
-    color: var(--color-accent-ink);
+    background-color: var(--color-brand-blue);
+    color: #ffffff;
     border-radius: var(--radius-input);
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    transition: filter var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out), background-color var(--dur-short) var(--ease-out);
+    transition: filter var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out);
   }
-  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:hover { filter: brightness(1.1); }
   .btn-primary:active { transform: translateY(1px); }
   .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-snipr {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold tracking-tight;
+    background-color: var(--color-brand-orange);
+    color: #ffffff;
+    border-radius: var(--radius-input);
+    box-shadow: 0 2px 8px rgba(255, 90, 31, 0.25);
+    transition: filter var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out);
+  }
+  .btn-snipr:hover { filter: brightness(1.08); }
+  .btn-snipr:active { transform: translateY(1px); }
+  .btn-snipr:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-ink;
@@ -112,7 +124,7 @@
     transition: border-color var(--dur-short) var(--ease-out), background-color var(--dur-short) var(--ease-out);
   }
   .btn-ghost:hover {
-    border-color: var(--color-accent);
+    border-color: var(--color-brand-blue);
     background-color: var(--color-paper-3);
   }
   .btn-ghost:active { transform: translateY(1px); }
@@ -133,12 +145,48 @@
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold;
     color: var(--color-danger);
-    background-color: rgba(220, 38, 38, 0.08);
-    border: 1px solid rgba(220, 38, 38, 0.25);
+    background-color: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
     border-radius: var(--radius-input);
     transition: background-color var(--dur-short) var(--ease-out);
   }
-  .btn-danger:hover { background-color: rgba(220, 38, 38, 0.16); }
+  .btn-danger:hover { background-color: rgba(239, 68, 68, 0.16); }
+
+  /* Uniform Tag/Marks across Settings & App */
+  .tag-uniform {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+  .tag-connected, .tag-verified {
+    color: #10b981;
+    background-color: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+  }
+  .tag-active {
+    color: #0284c7;
+    background-color: rgba(2, 132, 199, 0.12);
+    border: 1px solid rgba(2, 132, 199, 0.35);
+  }
+  .tag-disconnected, .tag-inactive {
+    color: var(--color-muted);
+    background-color: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+  }
+  .tag-recording, .tag-live {
+    color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+  }
 
   .badge-ok, .badge-warn, .badge-danger, .badge-brass, .badge-brand, .badge-float {
     font-family: var(--font-mono);
@@ -152,10 +200,10 @@
     gap: 4.5px;
   }
   .badge-ok     { color: var(--color-ok);     background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25); }
-  .badge-warn   { color: var(--color-warn);   background: rgba(217, 119, 6, 0.12);   border: 1px solid rgba(217, 119, 6, 0.25); }
-  .badge-danger { color: var(--color-danger); background: rgba(220, 38, 38, 0.12);  border: 1px solid rgba(220, 38, 38, 0.25); }
-  .badge-brass, .badge-brand  { color: var(--color-accent); background: rgba(37, 99, 235, 0.12); border: 1px solid rgba(37, 99, 235, 0.25); }
-  .badge-float  { color: var(--color-accent); background: var(--color-paper-2); border: 1px solid var(--color-rule-2); }
+  .badge-warn   { color: var(--color-warn);   background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.25); }
+  .badge-danger { color: var(--color-danger); background: rgba(239, 68, 68, 0.12);  border: 1px solid rgba(239, 68, 68, 0.25); }
+  .badge-brass, .badge-brand  { color: var(--color-brand-blue); background: rgba(2, 132, 199, 0.12); border: 1px solid rgba(2, 132, 199, 0.25); }
+  .badge-float  { color: var(--color-brand-blue); background: var(--color-paper-2); border: 1px solid var(--color-rule-2); }
 
   .safe-bottom::after {
     content: '';

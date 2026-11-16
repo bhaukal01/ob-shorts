@@ -74,7 +74,7 @@ revokes the OAuth key behind an access or refresh token; hand-made keys are
 never revocable there. The `/mcp` 401 carries
 `WWW-Authenticate: Bearer resource_metadata=...` so clients find the flow.
 The key carries the granted scope (`api_keys.scope`, `cloud/scopes.py`). The only
-scope is `clipforge`, the default every client asks for (unknown scopes are
+scope is `clipsnipr`, the default every client asks for (unknown scopes are
 dropped, not refused); it reaches `/mcp`, the endpoints the MCP tools call
 in-process and the download paths, and anything else is a 403 naming the
 scope. OAuth keys minted before the column are recognised by their name
@@ -90,7 +90,7 @@ stuck in a loop. Agent upload slots (`POST /api/uploads`) are capped at
 ## Webhooks
 
 `POST /api/process` takes `webhook_url` + optional `webhook_secret`
-(HMAC-SHA256, `X-ClipForge-Signature`). Validated with
+(HMAC-SHA256, `X-ClipSnipr-Signature`). Validated with
 `security_utils.assert_public_url` at submit AND at delivery (DNS rebinding).
 Fired once per job from `run_job_wrapper` after the R2 archive so the payload can
 carry durable download links; survives redeploys via the resume manifest.

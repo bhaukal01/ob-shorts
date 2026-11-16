@@ -1,0 +1,2 @@
+[console_scripts]
+clipsnipr = clipsnipr_cli:main

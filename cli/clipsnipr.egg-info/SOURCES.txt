@@ -1,0 +1,8 @@
+README.md
+clipsnipr_cli.py
+pyproject.toml
+clipsnipr.egg-info/PKG-INFO
+clipsnipr.egg-info/SOURCES.txt
+clipsnipr.egg-info/dependency_links.txt
+clipsnipr.egg-info/entry_points.txt
+clipsnipr.egg-info/top_level.txt

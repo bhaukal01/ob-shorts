@@ -1,5 +1,5 @@
 """
-SQLite persistence layer for ClipForge.
+SQLite persistence layer for ClipSnipr.
 
 Stores persistent application settings, OAuth credentials/tokens for native
 YouTube/Instagram publishing, and publish logs.
@@ -20,7 +20,7 @@ _RESOLVED_DB_PATH: Optional[str] = None
 
 
 def get_db_path() -> str:
-    """Resolve database path from DB_PATH env var or default to ./data/clipforge.db with fallback."""
+    """Resolve database path from DB_PATH env var or default to ./data/clipsnipr.db with fallback."""
     global _RESOLVED_DB_PATH
     if _RESOLVED_DB_PATH:
         return _RESOLVED_DB_PATH
@@ -30,11 +30,11 @@ def get_db_path() -> str:
         candidate = custom
     elif "PYTEST_CURRENT_TEST" in os.environ:
         import tempfile
-        candidate = os.path.join(tempfile.gettempdir(), "clipforge_pytest.db")
+        candidate = os.path.join(tempfile.gettempdir(), "clipsnipr_pytest.db")
     elif os.path.exists("/app") and os.path.isdir("/app"):
-        candidate = "/app/data/clipforge.db"
+        candidate = "/app/data/clipsnipr.db"
     else:
-        candidate = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "clipforge.db"))
+        candidate = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "clipsnipr.db"))
 
     dir_path = os.path.dirname(os.path.abspath(candidate))
     try:
@@ -47,7 +47,7 @@ def get_db_path() -> str:
         _RESOLVED_DB_PATH = candidate
     except Exception as e:
         import tempfile
-        fallback = os.path.join(tempfile.gettempdir(), "clipforge.db")
+        fallback = os.path.join(tempfile.gettempdir(), "clipsnipr.db")
         print(f"⚠️ Warning: Database dir '{dir_path}' not writable ({e}). Using '{fallback}'.")
         _RESOLVED_DB_PATH = fallback
 

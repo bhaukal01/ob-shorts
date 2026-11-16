@@ -286,7 +286,7 @@ def gemini_missing_error():
     """
     if BILLING_ENABLED:
         return payment_required(
-            "no_plan", "This action needs an active ClipForge plan (or the user's own API key).")
+            "no_plan", "This action needs an active ClipSnipr plan (or the user's own API key).")
     return HTTPException(status_code=400, detail="Missing X-Gemini-Key header")
 
 
@@ -645,7 +645,7 @@ async def _reserve_after_job_limit(request, user, url, input_path, job_id, max_m
     if balance["remaining"] < 1:
         _maybe_send_quota_email(user)
         raise payment_required(
-            "quota_exceeded", "The user is out of ClipForge processing minutes for this period.",
+            "quota_exceeded", "The user is out of ClipSnipr processing minutes for this period.",
             minutes_required=1, minutes_remaining=balance["remaining"], partial_minutes=0)
 
     # Free queue lane, then the brake: before the probe, the reservation and
@@ -3831,9 +3831,9 @@ async def _webhook_clip_entries(job_id, job):
 
 
 async def _deliver_webhook(url, body: bytes, secret):
-    headers = {"Content-Type": "application/json", "User-Agent": "ClipForge-Webhook/1.0"}
+    headers = {"Content-Type": "application/json", "User-Agent": "ClipSnipr-Webhook/1.0"}
     if secret:
-        headers["X-ClipForge-Signature"] = _sign_webhook(body, secret)
+        headers["X-ClipSnipr-Signature"] = _sign_webhook(body, secret)
     from security_utils import assert_public_url, UnsafeURLError
     loop = asyncio.get_event_loop()
     for attempt, delay in enumerate(WEBHOOK_RETRY_DELAYS, 1):
@@ -4289,8 +4289,7 @@ app.include_router(_mcp_server.router)
 
 # Free public tools behind the /tools SEO pages: YouTube transcript (existing
 # captions only, never the GPU) and the title/description/tag generator.
-import free_tools as _free_tools
-app.include_router(_free_tools.router)
+
 
 # Enable CORS for frontend. Cloud mode locks this down to the configured origins;
 # self-host keeps the permissive wildcard it has always used.
@@ -6573,7 +6572,7 @@ async def download_all_clips(job_id: str, request: Request):
     return FileResponse(
         zip_path,
         media_type="application/zip",
-        filename=f"clipforge_clips_{job_id[:8]}.zip",
+        filename=f"clipsnipr_clips_{job_id[:8]}.zip",
         background=BackgroundTask(remove_zip),
     )
 
@@ -8662,7 +8661,7 @@ async def post_to_socials(req: SocialPostRequest, request: Request):
         # The upload is a blocking multipart POST of the whole clip (tens of
         # seconds for TikTok+YouTube). Run inline, it froze the event loop:
         # 23-sep-2026 19:47:48 UTC one post stalled every request, /health
-        # included, for 42 s and the uptime monitor paged "clipforge-api
+        # included, for 42 s and the uptime monitor paged "clipsnipr-api
         # down". It runs in a worker thread so the API keeps answering.
         print(f"📡 Sending to Upload-Post for platforms: {req.platforms}")
         response = await asyncio.to_thread(
@@ -8865,7 +8864,7 @@ async def _social_analytics_auth(request: Request, byok_profile: Optional[str]):
         if BILLING_ENABLED:
             # Signed-in free user (or no auth at all): social posting is
             # paid-only in cloud, so there are no posts to measure either.
-            raise payment_required("no_plan", "Social analytics needs an active ClipForge plan.")
+            raise payment_required("no_plan", "Social analytics needs an active ClipSnipr plan.")
         raise HTTPException(status_code=400, detail="Missing X-Upload-Post-Key header")
     if forced_profile:
         user = await _user_from_request(request)
@@ -8936,7 +8935,7 @@ async def social_total_impressions(
     breakdown: Optional[bool] = None,
     user: Optional[str] = None,
 ):
-    """Views of the posts published through ClipForge in a window.
+    """Views of the posts published through ClipSnipr in a window.
 
     Computed by aggregating the profile-scoped post cache instead of proxying
     Upload-Post's /total-impressions: that endpoint echoes the requested
@@ -9051,7 +9050,7 @@ async def _scheduled_posts_for(api_key: str, profile: str) -> list:
 
     Upload-Post's GET /uploadposts/schedule takes no profile filter and returns
     everything the *account* has pending — with the managed key that is every
-    ClipForge user's queue, so the filter below is what keeps one tenant from
+    ClipSnipr user's queue, so the filter below is what keeps one tenant from
     seeing (or cancelling) another's. Same class of bug as the impressions
     endpoint; do not "simplify" it away.
     """
@@ -9128,7 +9127,7 @@ async def _probe_thumbnail_url(request, url, user):
     if balance["remaining"] < 1:
         _maybe_send_quota_email(user)
         raise payment_required(
-            "quota_exceeded", "The user is out of ClipForge processing minutes for this period.",
+            "quota_exceeded", "The user is out of ClipSnipr processing minutes for this period.",
             minutes_required=1, minutes_remaining=balance["remaining"])
     _check_probe_rate(user.id)
     paid_allowed = not await _paid_proxy_budget_exceeded()
@@ -9479,7 +9478,7 @@ async def _thumbnail_text_gate(request, session):
             _maybe_send_quota_email(user)
             raise payment_required(
                 "quota_exceeded",
-                "The user is out of ClipForge minutes; analyze a video to get title suggestions.",
+                "The user is out of ClipSnipr minutes; analyze a video to get title suggestions.",
                 minutes_required=1, minutes_remaining=balance["remaining"])
     times.append(now)
 

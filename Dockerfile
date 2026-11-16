@@ -137,9 +137,9 @@ ENV PATH="/app/bin:$PATH" FFMPEG_THREADS=2
 
 # Register the bundled fonts (Anton for Impact) and the UI-name -> real-font
 # aliases with fontconfig so libass resolves what the subtitle modal offers.
-RUN mkdir -p /usr/local/share/fonts/clipforge \
-    && cp fonts/*.ttf /usr/local/share/fonts/clipforge/ \
-    && cp fonts/clipforge-fontmap.conf /etc/fonts/conf.d/60-clipforge.conf \
+RUN mkdir -p /usr/local/share/fonts/clipsnipr \
+    && cp fonts/*.ttf /usr/local/share/fonts/clipsnipr/ \
+    && cp fonts/clipsnipr-fontmap.conf /etc/fonts/conf.d/60-clipsnipr.conf \
     && fc-cache -f
 
 # Create a non-root user (Moved up)

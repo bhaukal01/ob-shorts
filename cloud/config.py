@@ -291,7 +291,7 @@ class Settings:
 
     @property
     def frontend_url(self) -> str:
-        return os.environ.get("FRONTEND_URL", "https://clipforge.studio").rstrip("/")
+        return os.environ.get("FRONTEND_URL", "https://clipsnipr.studio").rstrip("/")
 
     @property
     def public_api_url(self) -> str:
@@ -333,7 +333,7 @@ class Settings:
     @property
     def email_from(self) -> str:
         # Namecheap requires the From to be the authenticated mailbox.
-        return os.environ.get("EMAIL_FROM") or (f"ClipForge <{self.smtp_user}>" if self.smtp_user else "ClipForge")
+        return os.environ.get("EMAIL_FROM") or (f"ClipSnipr <{self.smtp_user}>" if self.smtp_user else "ClipSnipr")
 
     @property
     def admin_email(self) -> str:
@@ -403,7 +403,7 @@ class Settings:
 
     @property
     def agentledger_treasury_id(self) -> str:
-        # The Stripe Connect treasury in AgentLedger that holds ClipForge' customers.
+        # The Stripe Connect treasury in AgentLedger that holds ClipSnipr' customers.
         return os.environ.get("AGENTLEDGER_TREASURY_ID", "720d3b70-3806-4c59-8729-2495b489a771")
 
     # Managed provider keys (server-owned, only handed to entitled users)
@@ -416,8 +416,8 @@ class Settings:
         return os.environ.get("MANAGED_UPLOAD_POST_API_KEY", "")
 
     @property
-    def clipforge_logo_url(self) -> str:
-        return os.environ.get("CLIPFORGE_LOGO_URL", "https://clipforge.studio/logo.png")
+    def clipsnipr_logo_url(self) -> str:
+        return os.environ.get("CLIPSNIPR_LOGO_URL", "https://clipsnipr.studio/logo.png")
 
     # Cloudflare R2 (S3-compatible) — durable video library storage
     @property
@@ -439,7 +439,7 @@ class Settings:
     @property
     def r2_public_base(self) -> str:
         """Base URL of a custom domain bound to the R2 bucket, e.g.
-        https://cdn.clipforge.studio — unset means keep signing S3 URLs.
+        https://cdn.clipsnipr.studio — unset means keep signing S3 URLs.
 
         The S3 endpoint (*.r2.cloudflarestorage.com) is not a browser-facing
         endpoint: measured 22-ago-2026, a presigned GET from Chrome on a Spanish

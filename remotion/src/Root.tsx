@@ -40,7 +40,7 @@ const DEFAULT_PROPS: ShortVideoProps = {
     },
   },
   hook: {
-    text: "POV: You just discovered ClipForge",
+    text: "POV: You just discovered ClipSnipr",
     position: "top",
     size: "M",
     entranceAnimation: "spring",

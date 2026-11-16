@@ -1,17 +1,17 @@
-# Subencargados de tratamiento — ClipForge Cloud
+# Subencargados de tratamiento — ClipSnipr Cloud
 
 **Responsable:** TONVI TECH SL · NIF B-19780394 · Calle Puerta del Mar 18, 5º,
-29005 Málaga (España) · info@clipforge.studio · info@clipforge.studio
+29005 Málaga (España) · info@clipsnipr.studio · info@clipsnipr.studio
 **Versión:** 4 de septiembre de 2026 · **Anterior:** — (primera versión)
 
 Lista nominal de todos los terceros que tratan datos personales por cuenta de
-TONVI TECH SL al prestar ClipForge Cloud, con qué recibe cada uno, dónde está
+TONVI TECH SL al prestar ClipSnipr Cloud, con qué recibe cada uno, dónde está
 y qué garantiza la transferencia cuando sale del EEE (arts. 28 y 44-49 RGPD).
 Es la versión de referencia del apartado 4 de la
-[política de privacidad](https://www.clipforge.studio/privacidad).
+[política de privacidad](https://www.clipsnipr.studio/privacidad).
 
 Los cambios se anotan al final. Un cliente B2B que quiera aviso previo de altas
-puede pedirlo en info@clipforge.studio.
+puede pedirlo en info@clipsnipr.studio.
 
 ---
 
@@ -45,7 +45,7 @@ puede pedirlo en info@clipforge.studio.
 
 | Proveedor | Entidad y país | Qué recibe | Garantía | DPA |
 |---|---|---|---|---|
-| **Upload-Post** | TONVI TECH SL | Publicación en las redes que el usuario conecta; **custodia los tokens OAuth** de TikTok/YouTube/Instagram (ClipForge no almacena ninguno, solo el nombre de perfil) | Mismo responsable | Sistema interno — su política debe cubrir esta custodia |
+| **Upload-Post** | TONVI TECH SL | Publicación en las redes que el usuario conecta; **custodia los tokens OAuth** de TikTok/YouTube/Instagram (ClipSnipr no almacena ninguno, solo el nombre de perfil) | Mismo responsable | Sistema interno — su política debe cubrir esta custodia |
 | **OpenPanel** (instancia propia) | TONVI TECH SL — servidores en Alemania | Eventos de uso con el uuid de la cuenta como `profileId`. **Nunca el email** (retirado del `identify` del navegador el 4-sep-2026). Solo tras consentimiento | Dentro del EEE; script servido desde el propio dominio | Sistema interno |
 | **Google (iniciar sesión con Google)** | Google Ireland Ltd. / Google LLC | Solo el ámbito `openid email profile`: dirección e identificador de cuenta | DPF + CCT | Google Terms |
 
@@ -81,7 +81,7 @@ Nada de esto se puede hacer desde el repositorio; queda para el responsable:
    "Hetzner y Contabo, Alemania"; si alguno es hardware propio fuera de un CPD,
    hay que decirlo y aplicar cifrado de disco.
 6. **Comprobar que la política de Upload-Post** describe la custodia de tokens
-   de redes sociales en nombre de usuarios de ClipForge.
+   de redes sociales en nombre de usuarios de ClipSnipr.
 
 ## Historial de cambios
 

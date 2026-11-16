@@ -3,12 +3,12 @@ import { Plug, Copy, Check } from 'lucide-react';
 import { getApiUrl } from '../config';
 
 // "Connect an agent": the one place that tells a person how to drive
-// ClipForge from Claude, ChatGPT, Cursor or n8n. Cloud accounts connect by
+// ClipSnipr from Claude, ChatGPT, Cursor or n8n. Cloud accounts connect by
 // URL (claude.ai and ChatGPT run the OAuth flow themselves; CLI clients take
 // an API key); a self-hosted install has no auth, so every snippet is the
 // local URL and nothing else.
 
-const CLOUD_MCP_URL = 'https://mcp.clipforge.studio/mcp';
+const CLOUD_MCP_URL = 'https://mcp.clipsnipr.studio/mcp';
 
 // The self-hosted dashboard proxies /api and /videos to the backend but not
 // /mcp (neither the Vite dev proxy nor nginx.conf), so an MCP client must
@@ -33,7 +33,7 @@ function buildClients({ cloud, url }) {
       steps: [
         'Open claude.ai → Settings → Connectors → Add custom connector.',
         `Paste this URL and save: ${url}`,
-        'Click Connect: you will land on ClipForge to approve the access, then the 8 tools appear in every chat.',
+        'Click Connect: you will land on ClipSnipr to approve the access, then the 8 tools appear in every chat.',
       ],
       snippet: url,
     },
@@ -41,24 +41,24 @@ function buildClients({ cloud, url }) {
       id: 'chatgpt', label: 'ChatGPT', kind: 'steps',
       steps: [
         'Open ChatGPT → Settings → Connectors → Create (developer mode).',
-        `Name it ClipForge, paste this MCP server URL, choose OAuth: ${url}`,
-        'Approve the access on ClipForge when asked. Done: ask ChatGPT to clip a video.',
+        `Name it ClipSnipr, paste this MCP server URL, choose OAuth: ${url}`,
+        'Approve the access on ClipSnipr when asked. Done: ask ChatGPT to clip a video.',
       ],
       snippet: url,
     },
     {
       id: 'claude-code', label: 'Claude Code', kind: 'code', lang: 'bash',
-      snippet: `claude mcp add --transport http clipforge ${url}${header}`,
+      snippet: `claude mcp add --transport http clipsnipr ${url}${header}`,
       note: cloud ? 'Create a key below and paste it in place of osk_YOUR_KEY.' : 'No key needed on a self-hosted install.',
     },
     {
       id: 'claude-desktop', label: 'Claude Desktop', kind: 'code', lang: 'json',
-      snippet: `{\n  "mcpServers": {\n    "clipforge": {\n      "command": "npx",\n      "args": ${desktopArgs}\n    }\n  }\n}`,
+      snippet: `{\n  "mcpServers": {\n    "clipsnipr": {\n      "command": "npx",\n      "args": ${desktopArgs}\n    }\n  }\n}`,
       note: 'Settings → Developer → Edit config (claude_desktop_config.json), then restart Claude.',
     },
     {
       id: 'cursor', label: 'Cursor', kind: 'code', lang: 'json',
-      snippet: `{\n  "mcpServers": {\n    "clipforge": {\n      "url": "${url}"${cursorHeaders}\n    }\n  }\n}`,
+      snippet: `{\n  "mcpServers": {\n    "clipsnipr": {\n      "url": "${url}"${cursorHeaders}\n    }\n  }\n}`,
       note: 'Settings → MCP → Add new global MCP server (.cursor/mcp.json).',
     },
     {

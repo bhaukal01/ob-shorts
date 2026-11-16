@@ -78,9 +78,9 @@ def _cooldown_ok(kind: str) -> bool:
     return True
 
 
-# Prefix on every ClipForge Telegram message. The chat is shared with other
+# Prefix on every ClipSnipr Telegram message. The chat is shared with other
 # products (Upload-Post, …), so this tags which one each alert is from.
-TELEGRAM_PREFIX = "CLIPFORGE ✂️ - "
+TELEGRAM_PREFIX = "CLIPSNIPR ✂️ - "
 
 
 def user_ref(user_id) -> str:
@@ -159,7 +159,7 @@ async def send_admin_alert(subject: str, body: str):
     # The body quotes job logs and error text: text, never markup.
     html = ("<pre style='font:13px/1.5 monospace;white-space:pre-wrap'>"
             f"{_html.escape(str(body))}</pre>")
-    await send_email(to, f"[ClipForge] {subject}", html)
+    await send_email(to, f"[ClipSnipr] {subject}", html)
 
 
 async def record_job_outcome(ok: bool, error_text: str = ""):

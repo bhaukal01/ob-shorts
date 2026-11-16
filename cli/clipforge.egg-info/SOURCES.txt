@@ -1,8 +1,0 @@
-README.md
-clipforge_cli.py
-pyproject.toml
-clipforge.egg-info/PKG-INFO
-clipforge.egg-info/SOURCES.txt
-clipforge.egg-info/dependency_links.txt
-clipforge.egg-info/entry_points.txt
-clipforge.egg-info/top_level.txt

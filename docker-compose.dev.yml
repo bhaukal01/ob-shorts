@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: clipforge-backend-dev
+    container_name: clipsnipr-backend-dev
     ports:
       - "8000:8000"
     volumes:
@@ -22,7 +22,7 @@ services:
     build:
       context: ./dashboard
       target: dev
-    container_name: clipforge-frontend-dev
+    container_name: clipsnipr-frontend-dev
     ports:
       - "5173:5173"
     volumes:
@@ -36,7 +36,7 @@ services:
     build:
       context: .
       dockerfile: render-service/Dockerfile
-    container_name: clipforge-renderer-dev
+    container_name: clipsnipr-renderer-dev
     ports:
       - "3100:3100"
     volumes:

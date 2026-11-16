@@ -14,10 +14,10 @@ Self-host keeps its BYOK semantics: no key required, ``X-Gemini-Key`` /
 env fallbacks apply unchanged.
 
 Connect with any MCP client, e.g.:
-    claude mcp add --transport http clipforge https://mcp.clipforge.studio/mcp \
+    claude mcp add --transport http clipsnipr https://mcp.clipsnipr.studio/mcp \
         --header "Authorization: Bearer osk_..."
 
-(mcp.clipforge.studio is a domain alias of the API app; api.clipforge.studio/mcp
+(mcp.clipsnipr.studio is a domain alias of the API app; api.clipsnipr.studio/mcp
 serves the identical endpoint.)
 """
 import json
@@ -35,13 +35,13 @@ from subtitles import CAPTION_PRESETS, line_budget
 router = APIRouter()
 
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
-SERVER_INFO = {"name": "clipforge", "title": "ClipForge", "version": "1.0.0"}
+SERVER_INFO = {"name": "clipsnipr", "title": "ClipSnipr", "version": "1.0.0"}
 # Kept descriptive: app-directory review flags instructions that read as
 # commands to the model (capitals, "do not use other tools", upsell steps).
 INSTRUCTIONS = (
-    "ClipForge turns long videos (YouTube URLs or direct video files) into "
+    "ClipSnipr turns long videos (YouTube URLs or direct video files) into "
     "short vertical clips. process_video takes the video URL as the user gave "
-    "it; ClipForge downloads, transcribes and analyses the video on its own "
+    "it; ClipSnipr downloads, transcribes and analyses the video on its own "
     "servers, so the video does not need to be opened or transcribed first. "
     "Typical flow: process_video, then get_job_status until the job is "
     "'completed' (a job takes a few minutes; checking every 30-60 seconds is "
@@ -66,7 +66,7 @@ TOOLS = [
         "name": "process_video",
         "title": "Process a video into short clips",
         "description": (
-            "Start clipping a video from its URL. ClipForge downloads the "
+            "Start clipping a video from its URL. ClipSnipr downloads the "
             "source itself, transcribes it, finds the most viral moments with AI "
             "and renders vertical (9:16) clips. Captions and the AI hook line are "
             "burned by default; pass captions=false or auto_hook=false to skip either. "
@@ -130,7 +130,7 @@ TOOLS = [
                 },
                 "webhook_secret": {
                     "type": "string",
-                    "description": "Optional secret; the webhook body is then HMAC-SHA256 signed (X-ClipForge-Signature).",
+                    "description": "Optional secret; the webhook body is then HMAC-SHA256 signed (X-ClipSnipr-Signature).",
                 },
                 "force_low_quality": {
                     "type": "boolean",
@@ -340,7 +340,7 @@ TOOLS = [
 
 # Behaviour hints hosts use to decide what needs the user's confirmation; the
 # ChatGPT app review requires all three on every tool. openWorld = reaches past
-# the user's ClipForge account (fetches an outside URL, posts publicly).
+# the user's ClipSnipr account (fetches an outside URL, posts publicly).
 _READ = {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False, "idempotentHint": True}
 _ANNOTATIONS = {
     "process_video": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
@@ -364,7 +364,7 @@ def _client(request: Request) -> httpx.AsyncClient:
     headers = {k: v for k, v in request.headers.items() if k.lower() in _FORWARD_HEADERS}
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=request.app, raise_app_exceptions=False),
-        base_url="http://clipforge.internal",
+        base_url="http://clipsnipr.internal",
         headers=headers,
         timeout=300.0,
     )
@@ -673,7 +673,7 @@ async def handle_message(msg, tool_caller) -> Optional[dict]:
         return _rpc_result(msg_id, {"resourceTemplates": []})
     if method == "resources/read":
         uri = (msg.get("params") or {}).get("uri") or ""
-        # Per-call URIs (ui://clipforge/clip-picker/<job>) resolve to the same
+        # Per-call URIs (ui://clipsnipr/clip-picker/<job>) resolve to the same
         # template; the data those carried was baked into the tool result.
         if uri.startswith(mcp_ui.CLIP_PICKER_BASE):  # any version, incl. per-call /<job>
             return _rpc_result(msg_id, {"contents": [{
@@ -735,7 +735,7 @@ async def mcp_endpoint(request: Request):
         u = request.base_url
         return JSONResponse(
             {"error": "Authentication required. Connect with OAuth (claude.ai, ChatGPT) "
-                      "or pass an ClipForge API key: Authorization: Bearer osk_... "
+                      "or pass an ClipSnipr API key: Authorization: Bearer osk_... "
                       "(create one in the dashboard)."},
             status_code=401,
             headers={"WWW-Authenticate": mcp_oauth.www_authenticate(f"{u.scheme}://{u.netloc}")},

@@ -23,7 +23,7 @@ import database
 SIGNING_SECRET = (
     os.environ.get("MEDIA_SIGNING_SECRET")
     or os.environ.get("SECRET_KEY")
-    or "clipforge_default_media_signing_secret_key"
+    or "clipsnipr_default_media_signing_secret_key"
 )
 
 
@@ -243,7 +243,7 @@ async def upload_youtube_shorts(
         "snippet": {
             "title": title[:100],  # YouTube title limit
             "description": desc[:5000],
-            "tags": tags or ["Shorts", "ClipForge"],
+            "tags": tags or ["Shorts", "ClipSnipr"],
             "categoryId": "22",  # People & Blogs
         },
         "status": {
@@ -303,7 +303,7 @@ async def upload_youtube_shorts(
         "snippet": {
             "title": title[:100],  # YouTube title limit
             "description": desc[:5000],
-            "tags": tags or ["Shorts", "ClipForge"],
+            "tags": tags or ["Shorts", "ClipSnipr"],
             "categoryId": "22",  # People & Blogs
         },
         "status": {

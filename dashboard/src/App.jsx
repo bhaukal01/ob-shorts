@@ -6,10 +6,7 @@ import McpConnectCard from './components/McpConnectCard';
 import ResultCard from './components/ResultCard';
 import ProcessingAnimation from './components/ProcessingAnimation';
 import SegmentedControl from './components/ui/SegmentedControl';
-import UsageMeter from './components/UsageMeter';
 import { getApiUrl } from './config';
-import ClipTutorial from './components/ClipTutorial';
-import OnboardingSurvey from './components/OnboardingSurvey';
 import AdvancedBanner from './components/AdvancedBanner';
 import ProfileMenu from './components/ProfileMenu';
 import Modal from './components/ui/Modal';
@@ -19,6 +16,8 @@ import { track } from './lib/analytics';
 import { readConnectReturn, stripConnectReturn } from './lib/connectReturn';
 import { rememberTabAfterLogin } from './lib/tabAfterLogin';
 import { JobPollError, pollFailureAction } from './lib/jobPoll';
+import BrandLogo, { BrandIcon } from './components/BrandLogo';
+import StatusTag from './components/StatusTag';
 
 // Code-split heavy interactive subcomponents & modals for ultra-fast initial load
 const LiveStreamTab = React.lazy(() => import('./components/LiveStreamTab'));
@@ -28,59 +27,8 @@ const ReframeEditor = React.lazy(() => import('./components/ReframeEditor'));
 const ScheduleWeekModal = React.lazy(() => import('./components/ScheduleWeekModal'));
 const LoginModal = React.lazy(() => import('./components/LoginModal'));
 
-// Brand Logo Component
-const BrandLogo = () => (
-  <div className="flex items-center gap-2.5">
-    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shrink-0">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 6h16" />
-        <path d="M4 12h10" />
-        <path d="M4 18h14" />
-        <circle cx="19" cy="12" r="2.5" fill="#10b981" stroke="none" />
-      </svg>
-    </div>
-    <div className="flex flex-col">
-      <span className="font-bold text-base tracking-tight text-ink leading-none">ClipForge</span>
-      <span className="text-[10px] font-mono tracking-wider uppercase text-muted leading-tight mt-0.5">Studio</span>
-    </div>
-  </div>
-);
-
-// Theme Toggle Component: System, Dark, Light
-const ThemeToggle = ({ theme, setTheme }) => (
-  <div className="flex items-center p-0.5 rounded-lg border border-rule bg-paper3/60 text-xs">
-    <button
-      type="button"
-      onClick={() => setTheme('light')}
-      title="Light theme"
-      className={`p-1.5 rounded-md transition-colors ${theme === 'light' ? 'bg-paper text-brand shadow-xs' : 'text-muted hover:text-ink'}`}
-      aria-label="Light theme"
-    >
-      <Sun size={14} />
-    </button>
-    <button
-      type="button"
-      onClick={() => setTheme('dark')}
-      title="Dark theme"
-      className={`p-1.5 rounded-md transition-colors ${theme === 'dark' ? 'bg-paper text-brand shadow-xs' : 'text-muted hover:text-ink'}`}
-      aria-label="Dark theme"
-    >
-      <Moon size={14} />
-    </button>
-    <button
-      type="button"
-      onClick={() => setTheme('system')}
-      title="System default theme"
-      className={`p-1.5 rounded-md transition-colors ${theme === 'system' ? 'bg-paper text-brand shadow-xs' : 'text-muted hover:text-ink'}`}
-      aria-label="System default theme"
-    >
-      <Monitor size={14} />
-    </button>
-  </div>
-);
-
 // Enhanced "Encryption" using XOR + Base64 with a Salt
-const SECRET_KEY = import.meta.env.VITE_ENCRYPTION_KEY || "ClipForge-Static-Salt-Change-Me";
+const SECRET_KEY = import.meta.env.VITE_ENCRYPTION_KEY || "ClipSnipr-Static-Salt-Change-Me";
 const ENCRYPTION_PREFIX = "ENC:";
 
 const encrypt = (text) => {
@@ -286,7 +234,7 @@ const UserProfileSelector = ({ profiles, selectedUserId, onSelect, onConnect }) 
   );
 };
 
-const SESSION_KEY = 'clipforge_session';
+const SESSION_KEY = 'clipsnipr_session';
 
 // The server's own explanation for a rejected/failed job, readable: FastAPI
 // answers {"detail": "..."} or {"detail": {"message": ...}}. Showing the raw
@@ -365,7 +313,7 @@ function App() {
   // Tri-Mode Theme Engine: 'system' (default) | 'dark' | 'light'
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem('clipforge_theme') || 'system';
+      return localStorage.getItem('clipsnipr_theme') || 'system';
     } catch (_) {
       return 'system';
     }
@@ -382,7 +330,7 @@ function App() {
         document.documentElement.style.colorScheme = 'light';
       }
       try {
-        localStorage.setItem('clipforge_theme', t);
+        localStorage.setItem('clipsnipr_theme', t);
       } catch (_) {}
     };
 
@@ -404,7 +352,7 @@ function App() {
     }
   }, [theme]);
 
-  // Persistent Backend Settings from SQLite database (clipforge.db)
+  // Persistent Backend Settings from SQLite database (clipsnipr.db)
   const [backendSettings, setBackendSettings] = useState({
     llm_provider: 'openai',
     llm_base_url: 'https://api.onebyt.live/v1',
@@ -855,7 +803,7 @@ function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `clipforge_clips_${(jobId || '').slice(0, 8)}.zip`;
+      a.download = `clipsnipr_clips_${(jobId || '').slice(0, 8)}.zip`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1838,25 +1786,36 @@ function App() {
   };
   const tabLocked = (id) => tutorialLock && id !== 'dashboard';
 
-  const NavFooterLinks = ({ collapsed = false }) => (
-    <div className="flex flex-col gap-2 pt-1">
-      <div className="flex items-center justify-between">
-        <span className={`text-[11px] font-mono text-muted uppercase tracking-wider ${collapsed ? 'hidden lg:block' : ''}`}>Theme</span>
-        <ThemeToggle theme={theme} setTheme={setTheme} />
+  const NavFooterLinks = ({ collapsed = false }) => {
+    const isDark = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return (
+      <div className="flex flex-col gap-2 pt-1">
+        <div className="flex items-center justify-between">
+          <span className={`text-[11px] font-mono text-muted uppercase tracking-wider ${collapsed ? 'hidden lg:block' : ''}`}>Theme</span>
+          <button
+            type="button"
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            className="p-1.5 rounded-lg border border-rule hover:border-rule2 bg-paper3 text-muted hover:text-ink transition-colors flex items-center gap-1.5 text-xs font-mono"
+            title={`Toggle Theme (Current: ${theme})`}
+          >
+            {isDark ? <Sun size={13} className="text-amber-400" /> : <Moon size={13} className="text-brandblue" />}
+            <span className={collapsed ? 'hidden lg:inline' : 'inline'}>{isDark ? 'Dark' : 'Light'}</span>
+          </button>
+        </div>
+        <div className="text-[10.5px] font-mono text-muted/70 flex items-center justify-between pt-1 border-t border-rule/50">
+          <span className={collapsed ? 'hidden lg:block' : ''}>ClipSnipr v1.0</span>
+          <span className="text-emerald-500 flex items-center gap-1 font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" /> Live
+          </span>
+        </div>
       </div>
-      <div className="text-[10.5px] font-mono text-muted/70 flex items-center justify-between pt-1 border-t border-rule/50">
-        <span className={collapsed ? 'hidden lg:block' : ''}>ClipForge v2.4</span>
-        <span className="text-emerald-500 flex items-center gap-1 font-semibold">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" /> Live
-        </span>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // Desktop rail
   const Sidebar = () => (
     <div className="hidden md:flex w-20 lg:w-64 bg-paper2 border-r border-rule flex-col h-full shrink-0 transition-all duration-300">
-      <a href="#app" onClick={() => goToTab('dashboard')} className="p-5 flex items-center gap-3" title="ClipForge Studio">
+      <a href="#app" onClick={() => goToTab('dashboard')} className="p-5 flex items-center gap-3" title="ClipSnipr Studio">
         <BrandLogo />
       </a>
 
@@ -2033,9 +1992,6 @@ function App() {
               </span>
             )}
 
-            {/* Accessible Tri-Mode Theme Toggle */}
-            <ThemeToggle theme={theme} setTheme={setTheme} />
-
             {keysMissing && (
               <button
                 onClick={() => goToTab('settings')}
@@ -2125,7 +2081,7 @@ function App() {
                   </p>
                   <h1 className="font-display lowercase text-2xl sm:text-3xl text-ink">Configuration</h1>
                   <p className="text-xs text-muted mt-1">
-                    All settings are persistently stored in SQLite (<code className="text-brass">clipforge.db</code>).
+                    All settings are persistently stored in SQLite (<code className="text-brass">clipsnipr.db</code>).
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2139,6 +2095,46 @@ function App() {
                       <Loader2 size={14} className="animate-spin" /> Saving...
                     </span>
                   )}
+                </div>
+              </div>
+
+              {/* SECTION: Appearance & Theme */}
+              <div className="card p-5 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
+                      <Sun size={18} className="text-brandblue" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-ink">Appearance &amp; Theme</h2>
+                      <p className="text-xs text-muted">Choose interface display theme: system preference, dark obsidian, or light slate</p>
+                    </div>
+                  </div>
+                  <StatusTag status="active" label={theme === 'system' ? 'System Theme' : theme === 'dark' ? 'Dark Mode' : 'Light Mode'} />
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 p-1 bg-paper3 rounded-input border border-rule">
+                  <button
+                    type="button"
+                    onClick={() => setTheme('system')}
+                    className={`py-2 px-3 text-xs sm:text-sm font-medium rounded-input transition-all flex items-center justify-center gap-2 ${theme === 'system' ? 'bg-paper text-ink shadow-xs font-semibold' : 'text-muted hover:text-ink'}`}
+                  >
+                    <Monitor size={14} /> System
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTheme('dark')}
+                    className={`py-2 px-3 text-xs sm:text-sm font-medium rounded-input transition-all flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-paper text-ink shadow-xs font-semibold' : 'text-muted hover:text-ink'}`}
+                  >
+                    <Moon size={14} /> Dark
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTheme('light')}
+                    className={`py-2 px-3 text-xs sm:text-sm font-medium rounded-input transition-all flex items-center justify-center gap-2 ${theme === 'light' ? 'bg-paper text-ink shadow-xs font-semibold' : 'text-muted hover:text-ink'}`}
+                  >
+                    <Sun size={14} /> Light
+                  </button>
                 </div>
               </div>
 
@@ -2156,13 +2152,9 @@ function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     {backendSettings.llm_provider === 'openai' && backendSettings.llm_connection_status === 'connected' && (
-                      <span className="badge-ok flex items-center gap-1 text-xs">
-                        <Check size={12} /> Connected &amp; Verified
-                      </span>
+                      <StatusTag status="connected" label="Connected & Verified" />
                     )}
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${backendSettings.llm_provider === 'openai' ? 'bg-brass/10 text-brass border border-brass/30' : 'bg-paper3 text-ink2 border border-rule'}`}>
-                      Active: {backendSettings.llm_provider === 'openai' ? 'OpenAI-Compatible' : 'Google Gemini'}
-                    </span>
+                    <StatusTag status="active" label={backendSettings.llm_provider === 'openai' ? 'OpenAI-Compatible' : 'Google Gemini'} />
                   </div>
                 </div>
 
@@ -2290,7 +2282,7 @@ function App() {
                     <div className="p-3 bg-paper3/60 border border-rule rounded-input text-xs text-muted flex items-start gap-2.5">
                       <Shield size={16} className="text-ok shrink-0 mt-0.5" />
                       <div>
-                        <strong className="text-ink font-medium">Local Face Tracking Activated:</strong> When using an OpenAI-compatible provider, ClipForge automatically disables Google GenAI layout calls and tracks active speakers using local OpenCV &amp; MediaPipe (<code className="text-brass">crop.py</code>).
+                        <strong className="text-ink font-medium">Local Face Tracking Activated:</strong> When using an OpenAI-compatible provider, ClipSnipr automatically disables Google GenAI layout calls and tracks active speakers using local OpenCV &amp; MediaPipe (<code className="text-brass">crop.py</code>).
                       </div>
                     </div>
 
@@ -2377,13 +2369,9 @@ function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     {backendSettings.transcription_provider === 'groq' && backendSettings.groq_connection_status === 'connected' && (
-                      <span className="badge-ok flex items-center gap-1 text-xs">
-                        <Check size={12} /> Connected &amp; Verified
-                      </span>
+                      <StatusTag status="connected" label="Connected & Verified" />
                     )}
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${backendSettings.transcription_provider === 'groq' ? 'bg-brass/10 text-brass border border-brass/30' : 'bg-paper3 text-ink2 border border-rule'}`}>
-                      Active: {backendSettings.transcription_provider === 'groq' ? 'Groq Cloud Whisper' : 'Local CPU Whisper'}
-                    </span>
+                    <StatusTag status="active" label={backendSettings.transcription_provider === 'groq' ? 'Groq Cloud Whisper' : 'Local CPU Whisper'} />
                   </div>
                 </div>
 
@@ -2534,19 +2522,15 @@ function App() {
                       <p className="text-xs text-muted">Cloudflare R2, AWS S3, MinIO, Wasabi, Backblaze B2, or any S3 provider</p>
                     </div>
                   </div>
-                  {backendSettings.s3_connection_status === 'connected' ? (
-                    <span className="badge-ok flex items-center gap-1 text-xs">
-                      <Check size={12} /> Connected: {backendSettings.s3_bucket_name || 'S3 Bucket'}
-                    </span>
-                  ) : backendSettings.s3_connection_status === 'failed' ? (
-                    <span className="badge-warn flex items-center gap-1 text-xs text-danger">
-                      <AlertCircle size={12} /> Connection Error
-                    </span>
-                  ) : (
-                    <span className="badge-warn text-xs">
-                      {backendSettings.s3_enabled === '1' ? 'Configured' : 'Disabled'}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {backendSettings.s3_connection_status === 'connected' ? (
+                      <StatusTag status="connected" label={`Connected: ${backendSettings.s3_bucket_name || 'S3 Bucket'}`} />
+                    ) : backendSettings.s3_connection_status === 'failed' ? (
+                      <StatusTag status="error" label="Connection Error" />
+                    ) : (
+                      <StatusTag status={backendSettings.s3_enabled === '1' ? 'active' : 'inactive'} label={backendSettings.s3_enabled === '1' ? 'Configured' : 'Disabled'} />
+                    )}
+                  </div>
                 </div>
 
                 <p className="text-xs text-muted leading-relaxed">
@@ -2594,7 +2578,7 @@ function App() {
                           type="text"
                           value={backendSettings.s3_bucket_name || ''}
                           onChange={(e) => setBackendSettings({ ...backendSettings, s3_bucket_name: e.target.value })}
-                          placeholder="clipforge-videos"
+                          placeholder="clipsnipr-videos"
                           className="input-field text-sm font-mono w-full"
                         />
                       </div>
@@ -2706,17 +2690,15 @@ function App() {
                       <p className="text-xs text-muted">Native YouTube Data API v3 integration with OAuth 2.0 resumable uploads</p>
                     </div>
                   </div>
-                  {youtubeAccounts.length > 0 ? (
-                    <span className="badge-ok flex items-center gap-1 text-xs">
-                      <Check size={12} /> {youtubeAccounts.length} Channel{youtubeAccounts.length > 1 ? 's' : ''} Connected
-                    </span>
-                  ) : socialStatus.youtube?.connected ? (
-                    <span className="badge-ok flex items-center gap-1 text-xs">
-                      <Check size={12} /> Connected: {socialStatus.youtube.channel_title || 'YouTube Channel'}
-                    </span>
-                  ) : (
-                    <span className="badge-warn text-xs">Not Connected</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {youtubeAccounts.length > 0 ? (
+                      <StatusTag status="connected" label={`${youtubeAccounts.length} Channel${youtubeAccounts.length > 1 ? 's' : ''} Connected`} />
+                    ) : socialStatus.youtube?.connected ? (
+                      <StatusTag status="connected" label={`Connected: ${socialStatus.youtube.channel_title || 'YouTube'}`} />
+                    ) : (
+                      <StatusTag status="inactive" label="Not Connected" />
+                    )}
+                  </div>
                 </div>
 
                 <p className="text-xs text-muted leading-relaxed">
@@ -2832,17 +2814,15 @@ function App() {
                       <p className="text-xs text-muted">Instagram Graph API v21.0 integration with HMAC-signed media delivery</p>
                     </div>
                   </div>
-                  {instagramAccounts.length > 0 ? (
-                    <span className="badge-ok flex items-center gap-1 text-xs">
-                      <Check size={12} /> {instagramAccounts.length} Account{instagramAccounts.length > 1 ? 's' : ''} Connected
-                    </span>
-                  ) : socialStatus.instagram?.connected ? (
-                    <span className="badge-ok flex items-center gap-1 text-xs">
-                      <Check size={12} /> Connected: @{socialStatus.instagram.username || 'Instagram'}
-                    </span>
-                  ) : (
-                    <span className="badge-warn text-xs">Not Connected</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {instagramAccounts.length > 0 ? (
+                      <StatusTag status="connected" label={`${instagramAccounts.length} Account${instagramAccounts.length > 1 ? 's' : ''} Connected`} />
+                    ) : socialStatus.instagram?.connected ? (
+                      <StatusTag status="connected" label={`Connected: @${socialStatus.instagram.username || 'Instagram'}`} />
+                    ) : (
+                      <StatusTag status="inactive" label="Not Connected" />
+                    )}
+                  </div>
                 </div>
 
                 <p className="text-xs text-muted leading-relaxed">
@@ -3040,38 +3020,126 @@ function App() {
           )}
 
           {activeTab === 'dashboard' && status === 'idle' && (
-            <div className="h-full overflow-y-auto custom-scrollbar animate-fade">
-              <div className="min-h-full flex flex-col items-center justify-center px-4 py-5 sm:p-6">
-              {/* On a phone the hero used to fill the fold on its own and push
-                  the uploader — the whole point of the screen — below it. The
-                  eyebrow, the display size and the gaps all shrink first. */}
-              <div className="max-w-xl w-full text-center space-y-5 sm:space-y-8">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-rule bg-paper2 shadow-xs text-xs font-medium text-muted">
-                    <span className="w-2 h-2 rounded-full bg-blue-600" />
-                    <span>ClipForge Studio · Automated Short Video Intelligence</span>
+            <div className="h-full overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8 animate-fade">
+              <div className="max-w-7xl mx-auto space-y-6">
+                {/* STUDIO HEADER */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-rule">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-brandblue" />
+                      <span className="text-xs font-mono uppercase tracking-wider text-muted font-semibold">
+                        Clip Studio · AI Video Engine
+                      </span>
+                    </div>
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
+                      Clip Studio
+                    </h1>
+                    <p className="text-xs sm:text-sm text-muted mt-0.5">
+                      Ingest videos or streams, auto-detect viral hooks with LLM, and render high-retention 9:16 vertical shorts.
+                    </p>
                   </div>
-                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-ink tracking-tight">
-                    Generate Viral Shorts
-                  </h1>
-                  <p className="text-muted text-sm sm:text-base leading-relaxed max-w-lg mx-auto">
-                    Turn long-form videos and live broadcasts into vertical clips with auto-cut highlights, Hinglish/Hindi captions, and multi-channel publishing.
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusTag status="active" label="Engine Ready" />
+                    {socialStatus.youtube?.connected && (
+                      <span className="tag-uniform tag-connected hidden sm:inline-flex">
+                        <Youtube size={12} className="text-red-500" /> YT Auto-Post
+                      </span>
+                    )}
+                    {socialStatus.instagram?.connected && (
+                      <span className="tag-uniform tag-connected hidden sm:inline-flex">
+                        <Instagram size={12} className="text-pink-500" /> IG Auto-Post
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <MediaInput
-                  onProcess={handleProcess}
-                  isProcessing={status === 'processing'}
-                  youtubeAccounts={youtubeAccounts}
-                  instagramAccounts={instagramAccounts}
-                />
+                {/* TWO-STATION WORKBENCH */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left Station: Media Ingest & Directing (7 cols) */}
+                  <div className="lg:col-span-7 space-y-6">
+                    <MediaInput
+                      onProcess={handleProcess}
+                      isProcessing={status === 'processing'}
+                      youtubeAccounts={youtubeAccounts}
+                      instagramAccounts={instagramAccounts}
+                    />
+                  </div>
 
-                <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 text-muted text-xs sm:text-sm">
-                  <span className="flex items-center gap-2"><Youtube size={16} /> YouTube</span>
-                  <span className="flex items-center gap-2"><Instagram size={16} /> Instagram</span>
-                  <span className="flex items-center gap-2"><TikTokIcon size={16} /> TikTok</span>
+                  {/* Right Station: Engine Deck & Live Status (5 cols) */}
+                  <div className="lg:col-span-5 space-y-4">
+                    {/* Live Pipeline Specs Card */}
+                    <div className="card p-5 space-y-4">
+                      <div className="flex items-center justify-between border-b border-rule pb-2.5">
+                        <span className="text-xs font-mono uppercase font-semibold text-ink flex items-center gap-2">
+                          <Cpu size={14} className="text-brandblue" /> Active Engine Pipeline
+                        </span>
+                        <span className="text-[10px] font-mono text-muted uppercase">v1.0 Stack</span>
+                      </div>
+
+                      <div className="space-y-3 text-xs">
+                        <div className="flex items-center justify-between py-1 border-b border-rule/50">
+                          <span className="text-muted">ASR Transcription</span>
+                          <span className="font-semibold text-ink">
+                            {backendSettings.transcription_provider === 'groq' ? 'Groq Whisper Large-v3' : 'Local Whisper'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-rule/50">
+                          <span className="text-muted">Moment Picker</span>
+                          <span className="font-semibold text-ink">
+                            {backendSettings.llm_provider === 'openai' ? (backendSettings.openai_model || 'LLM Engine') : 'Gemini 2.5'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-rule/50">
+                          <span className="text-muted">Framing Engine</span>
+                          <span className="font-semibold text-ink">100% Height Facecam + Gameplay</span>
+                        </div>
+                        <div className="flex items-center justify-between py-1 border-b border-rule/50">
+                          <span className="text-muted">Subtitles Delivery</span>
+                          <span className="font-semibold text-ink">Hinglish / Hindi Word-by-Word</span>
+                        </div>
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-muted">Cloud Storage</span>
+                          <span className="font-semibold text-ink">
+                            {backendSettings.s3_connection_status === 'connected' ? `S3: ${backendSettings.s3_bucket_name}` : 'Local Disk'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Creator Monitors Banner */}
+                    <div className="card p-5 space-y-3 border-l-4 border-l-red-500">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono uppercase font-semibold text-ink flex items-center gap-1.5">
+                          <Radio size={14} className="text-red-500 animate-pulse" /> Live Stream Tracking
+                        </span>
+                        <span className="tag-uniform tag-recording text-[10px]">Rolling 10m</span>
+                      </div>
+                      <p className="text-xs text-muted leading-relaxed">
+                        Track creator YouTube and Twitch channels 24/7. When they go live, rolling 10-minute segments are automatically captured, transcribed, and clipped in the background.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => goToTab('live')}
+                        className="btn-ghost w-full py-2 text-xs font-semibold flex items-center justify-center gap-2"
+                      >
+                        <Radio size={14} className="text-red-500" />
+                        <span>Open Creator Monitors</span>
+                      </button>
+                    </div>
+
+                    {/* Pro Tips Card */}
+                    <div className="card p-5 space-y-2.5 bg-paper3/40">
+                      <span className="text-xs font-mono uppercase font-semibold text-ink flex items-center gap-1.5">
+                        <Sparkles size={14} className="text-sniprorange" /> Tips for 10x Virality
+                      </span>
+                      <ul className="text-xs text-muted space-y-2 list-disc list-inside leading-relaxed">
+                        <li><b>Hinglish Script:</b> Ideal for Hindi gaming streams — transliterates spoken Hindi into high-retention Roman subtitles.</li>
+                        <li><b>Gaming Layout:</b> Automatically expands game area to fill 100% height below facecam with equal side-cropping.</li>
+                        <li><b>Auto-Posting:</b> Connect YouTube and Instagram accounts in Settings to distribute clips automatically.</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-              </div>
               </div>
             </div>
           )}
@@ -3430,7 +3498,7 @@ function App() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            ClipForge needs an AI provider configured to detect viral moments in your videos.
+            ClipSnipr needs an AI provider configured to detect viral moments in your videos.
           </p>
 
           {/* Gemini block */}
@@ -3520,17 +3588,7 @@ function App() {
         </Modal>
       )}
 
-      {showSurvey && <OnboardingSurvey onDone={() => setSurveyDone(true)} />}
-      {tutorialPhase && !showSurvey && (
-        <ClipTutorial
-          phase={tutorialPhase}
-          jobStatus={status}
-          errorText={jobError}
-          onStart={startTutorial}
-          onSkip={skipTutorial}
-          onDismissCelebrate={finishTutorial}
-        />
-      )}
+
       <React.Suspense fallback={null}>
         {showScheduleWeek && (
           <ScheduleWeekModal

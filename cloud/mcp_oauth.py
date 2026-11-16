@@ -1,7 +1,7 @@
 """OAuth 2.1 authorization server for the MCP endpoint (cloud mode).
 
 claude.ai and ChatGPT connect to a remote MCP server by URL alone: the user
-pastes ``https://mcp.clipforge.studio/mcp`` and the client discovers how to log
+pastes ``https://mcp.clipsnipr.studio/mcp`` and the client discovers how to log
 in from the server's metadata. That takes the pieces those clients actually
 use, and nothing else:
 
@@ -14,7 +14,7 @@ use, and nothing else:
   are public clients, PKCE is what binds the code to whoever started the flow.
 
 The consent screen lives in the dashboard (``#/oauth/authorize``), not here:
-the session is a bearer JWT in localStorage on www.clipforge.studio, which a
+the session is a bearer JWT in localStorage on www.clipsnipr.studio, which a
 plain browser GET to the API cannot see. So ``GET /oauth/authorize`` validates
 the request and bounces to the dashboard, the dashboard signs the user in if
 needed and asks "connect Claude to your account?", and ``POST /api/oauth/authorize``
@@ -63,7 +63,7 @@ def _now():
 # --------------------------------------------------------------------------- #
 def base_url(request: Request) -> str:
     """The origin the client is talking to, so the metadata names the host the
-    client actually used (mcp.clipforge.studio or api.clipforge.studio both route
+    client actually used (mcp.clipsnipr.studio or api.clipsnipr.studio both route
     here). uvicorn runs with --proxy-headers, so the scheme is the public one."""
     u = request.base_url
     return f"{u.scheme}://{u.netloc}"
@@ -75,8 +75,8 @@ def resource_metadata(base: str) -> dict:
         "authorization_servers": [base],
         "bearer_methods_supported": ["header"],
         "scopes_supported": [SCOPE],
-        "resource_name": "ClipForge",
-        "resource_documentation": "https://www.clipforge.studio/mcp",
+        "resource_name": "ClipSnipr",
+        "resource_documentation": "https://www.clipsnipr.studio/mcp",
     }
 
 
@@ -94,7 +94,7 @@ def server_metadata(base: str) -> dict:
         "token_endpoint_auth_methods_supported": ["none"],
         "scopes_supported": [SCOPE],
         "revocation_endpoint_auth_methods_supported": ["none"],
-        "service_documentation": "https://www.clipforge.studio/mcp",
+        "service_documentation": "https://www.clipsnipr.studio/mcp",
     }
 
 

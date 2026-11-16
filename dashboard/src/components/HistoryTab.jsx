@@ -268,11 +268,11 @@ export default function HistoryTab({ onReopenProject }) {
                           {proj.title}
                         </h3>
                         {proj.is_stream && (
-                          <span className="text-[10px] py-0.5 px-2 bg-purple-500/15 text-purple-400 border border-purple-500/30 rounded font-medium flex items-center gap-1 shrink-0">
-                            📹 Stream
+                          <span className="tag-uniform tag-recording text-[10px] py-0.5 px-2 shrink-0">
+                            Live Stream
                           </span>
                         )}
-                        <span className="badge-ok text-[10px] py-0.5 px-2 shrink-0">
+                        <span className="tag-uniform tag-connected text-[10px] py-0.5 px-2 shrink-0">
                           {proj.clip_count || clips.length} {proj.clip_count === 1 ? 'Clip' : 'Clips'}
                         </span>
                       </div>

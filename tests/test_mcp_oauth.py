@@ -34,19 +34,19 @@ class TestHelpers:
         assert out == "https://c.ai/cb?a=1&code=xyz"
 
     def test_consent_url_targets_the_hash_router(self):
-        url = mcp_oauth.consent_url("https://www.clipforge.studio/", {"client_id": "abc", "state": "s"})
-        assert url.startswith("https://www.clipforge.studio/#/oauth/authorize?")
+        url = mcp_oauth.consent_url("https://www.clipsnipr.studio/", {"client_id": "abc", "state": "s"})
+        assert url.startswith("https://www.clipsnipr.studio/#/oauth/authorize?")
         assert "client_id=abc" in url and "state=s" in url
 
     def test_metadata_points_at_the_same_host(self):
-        m = mcp_oauth.server_metadata("https://mcp.clipforge.studio")
-        assert m["issuer"] == "https://mcp.clipforge.studio"
-        assert m["token_endpoint"] == "https://mcp.clipforge.studio/oauth/token"
+        m = mcp_oauth.server_metadata("https://mcp.clipsnipr.studio")
+        assert m["issuer"] == "https://mcp.clipsnipr.studio"
+        assert m["token_endpoint"] == "https://mcp.clipsnipr.studio/oauth/token"
         assert m["code_challenge_methods_supported"] == ["S256"]
         assert m["token_endpoint_auth_methods_supported"] == ["none"]
-        r = mcp_oauth.resource_metadata("https://mcp.clipforge.studio")
-        assert r["resource"] == "https://mcp.clipforge.studio/mcp"
-        assert r["authorization_servers"] == ["https://mcp.clipforge.studio"]
+        r = mcp_oauth.resource_metadata("https://mcp.clipsnipr.studio")
+        assert r["resource"] == "https://mcp.clipsnipr.studio/mcp"
+        assert r["authorization_servers"] == ["https://mcp.clipsnipr.studio"]
 
 
 class TestDiscoveryEndpoints:
@@ -176,14 +176,14 @@ class TestRefreshAndRevoke:
     def _key(self, **kw):
         from types import SimpleNamespace
         base = dict(id="k1", key_hash="old", prefix="osk_old", revoked_at=None,
-                    scope="clipforge", name="Gemini · connected via OAuth")
+                    scope="clipsnipr", name="Gemini · connected via OAuth")
         base.update(kw)
         return SimpleNamespace(**base)
 
     def test_metadata_advertises_refresh_and_revocation(self):
-        m = mcp_oauth.server_metadata("https://mcp.clipforge.studio")
+        m = mcp_oauth.server_metadata("https://mcp.clipsnipr.studio")
         assert m["grant_types_supported"] == ["authorization_code", "refresh_token"]
-        assert m["revocation_endpoint"] == "https://mcp.clipforge.studio/oauth/revoke"
+        assert m["revocation_endpoint"] == "https://mcp.clipsnipr.studio/oauth/revoke"
         assert "code" in m["response_types_supported"]
         assert m["registration_endpoint"].endswith("/oauth/register")
 
@@ -227,7 +227,7 @@ class TestRefreshAndRevoke:
         assert body["refresh_token"] == "osr_keep"
         assert body["access_token"].startswith("osk_")
         assert key.key_hash == api_keys.hash_key(body["access_token"]) != "old"
-        assert body["scope"] == "clipforge" and sess.committed
+        assert body["scope"] == "clipsnipr" and sess.committed
         assert r.headers["cache-control"] == "no-store"
 
     def test_revoke_is_always_200(self, monkeypatch):

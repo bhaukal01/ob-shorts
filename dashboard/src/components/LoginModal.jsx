@@ -52,7 +52,7 @@ export default function LoginModal({ onClose, queued = false }) {
   };
 
   return (
-    <Modal isOpen onClose={onClose} eyebrow="ACCOUNT" title="Sign in to ClipForge" size="md">
+    <Modal isOpen onClose={onClose} eyebrow="ACCOUNT" title="Sign in to ClipSnipr" size="md">
       <p className="text-muted text-sm mb-6 lowercase">Access your plan and generate shorts with no API keys.</p>
 
       {queued && (
