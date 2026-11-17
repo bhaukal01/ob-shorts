@@ -1335,6 +1335,7 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             rescue_plans.append(("auth-native", pot_args or None, True))
             rescue_plans.append(("auth-web", {**pot_args, 'youtube': {'player_client': ['default', 'mweb']}}, True))
         rescue_plans.append(("anon-clients", {**pot_args, 'youtube': {'player_client': ['default', 'mweb', 'android_vr', 'web_safari']}}, False))
+        rescue_plans.append(("mobile-clients", {**pot_args, 'youtube': {'player_client': ['android', 'android_vr']}}, False))
 
         try:
             for r_proxy in rescue_proxies:

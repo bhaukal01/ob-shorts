@@ -560,6 +560,7 @@ function App() {
   const [testingCookies, setTestingCookies] = useState(false);
   const [testingLiveCookies, setTestingLiveCookies] = useState(false);
   const [cookieTestMsg, setCookieTestMsg] = useState(null);
+  const [cookieTestUrl, setCookieTestUrl] = useState('');
   const [showCookies, setShowCookies] = useState(false);
 
   // YouTube OAuth Credentials
@@ -1253,7 +1254,11 @@ function App() {
       const res = await apiFetch('/api/youtube/cookies/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cookies: backendSettings.youtube_cookies, live }),
+        body: JSON.stringify({
+          cookies: backendSettings.youtube_cookies,
+          live,
+          test_url: cookieTestUrl?.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -3006,6 +3011,21 @@ function App() {
                   <p className="text-[11px] text-muted">
                     If your VPS datacenter IP is blocked by YouTube, route downloads and live tests through an HTTP/HTTPS proxy.
                   </p>
+                </div>
+
+                {/* Specific Test Video URL */}
+                <div className="space-y-1 pt-1">
+                  <label className="text-[11px] font-mono text-muted uppercase tracking-wider flex items-center justify-between">
+                    <span>Target Video URL for Live Test (Optional)</span>
+                    <span className="text-[10px] text-muted lowercase">test your exact video URL live</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={cookieTestUrl}
+                    onChange={(e) => setCookieTestUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=ODR8dCEk4pg (or leave blank for baseline)"
+                    className="input-field text-xs font-mono w-full"
+                  />
                 </div>
 
                 {/* Test / Validation & Action Buttons */}
