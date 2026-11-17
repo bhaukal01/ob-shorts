@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film, Scissors, Flame } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film, Scissors, Flame, Cookie } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import ResultCard from './components/ResultCard';
@@ -521,6 +521,7 @@ function App() {
     llm_api_key: '',
     llm_model: 'gpt-4o-mini',
     gemini_api_key: '',
+    youtube_cookies: '',
     upload_post_api_key: '',
     public_api_url: '',
     public_frontend_url: '',
@@ -556,6 +557,9 @@ function App() {
   const [testingS3, setTestingS3] = useState(false);
   const [s3TestMsg, setS3TestMsg] = useState(null);
   const [showS3Secret, setShowS3Secret] = useState(false);
+  const [testingCookies, setTestingCookies] = useState(false);
+  const [cookieTestMsg, setCookieTestMsg] = useState(null);
+  const [showCookies, setShowCookies] = useState(false);
 
   // YouTube OAuth Credentials
   const [ytClientId, setYtClientId] = useState('');
@@ -1231,6 +1235,39 @@ function App() {
     } finally {
       setTestingS3(false);
     }
+  };
+
+  const handleTestCookies = async () => {
+    if (!backendSettings.youtube_cookies || !backendSettings.youtube_cookies.trim()) {
+      setCookieTestMsg({ ok: false, message: 'Please enter or paste YouTube cookies first.' });
+      return;
+    }
+    setTestingCookies(true);
+    setCookieTestMsg(null);
+    try {
+      const res = await apiFetch('/api/youtube/cookies/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookies: backendSettings.youtube_cookies }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setCookieTestMsg({ ok: true, message: data.message });
+      } else {
+        setCookieTestMsg({ ok: false, message: data.message || 'Cookie validation failed.' });
+      }
+    } catch (err) {
+      setCookieTestMsg({ ok: false, message: `Validation request failed: ${err.message}` });
+    } finally {
+      setTestingCookies(false);
+    }
+  };
+
+  const handleClearCookies = () => {
+    const updated = { ...backendSettings, youtube_cookies: '' };
+    setBackendSettings(updated);
+    saveBackendSettings(updated);
+    setCookieTestMsg(null);
   };
 
   const handleSaveYouTubeCreds = async () => {
@@ -2859,6 +2896,125 @@ function App() {
                     <Check size={14} /> Save S3 Configuration
                   </button>
                 </div>
+              </div>
+
+              {/* SECTION: YouTube Ingestion Cookies (yt-dlp) */}
+              <div className="card p-5 sm:p-6 space-y-5 border-l-4 border-l-amber-500">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-input bg-paper3 flex items-center justify-center shrink-0">
+                      <Cookie size={18} className="text-brass" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-medium text-ink lowercase">YouTube Ingestion Cookies (yt-dlp)</h2>
+                      <p className="text-xs text-muted">Bypass YouTube bot checks, 403 Forbidden errors, and rate limits for video and stream downloads</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {backendSettings.youtube_cookies?.trim() ? (
+                      <StatusTag status="connected" label="Cookies Configured (Active)" />
+                    ) : (
+                      <StatusTag status="inactive" label="Anonymous Mode (No Cookies)" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-paper3/60 border border-rule rounded-input text-xs text-muted space-y-2">
+                  <div className="flex items-start gap-2.5">
+                    <Shield size={16} className="text-brass shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="text-ink font-medium">Automatic Authentication for Downloads:</strong> When downloading YouTube videos or live streams, YouTube often blocks datacenter IPs with <code className="text-brass">"Sign in to confirm you’re not a bot"</code> or <code className="text-brass">HTTP 403 Forbidden</code>. Pasting your Netscape-formatted YouTube cookies here gives yt-dlp authenticated access to download without restrictions.
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted pl-6">
+                    Cookies are stored securely in SQLite (<code className="text-brass">clipsnipr.db</code>) and used automatically across all downloads and stream monitors. Changes take effect immediately without editing <code className="text-brass">.env</code> or restarting the container.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-medium text-ink2 uppercase tracking-wider">
+                      Netscape Cookie Text or Base64
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {backendSettings.youtube_cookies?.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => setShowCookies(!showCookies)}
+                          className="text-[11px] text-muted hover:text-ink flex items-center gap-1"
+                        >
+                          {showCookies ? <EyeOff size={13} /> : <Eye size={13} />}
+                          {showCookies ? 'Hide Content' : 'Show Content'}
+                        </button>
+                      )}
+                      <span className="text-[11px] text-muted">
+                        Export using browser extension (e.g. <em>Get cookies.txt LOCALLY</em>)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <textarea
+                      rows={showCookies || !backendSettings.youtube_cookies?.trim() ? 6 : 2}
+                      value={showCookies || !backendSettings.youtube_cookies?.trim() ? (backendSettings.youtube_cookies || '') : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••'}
+                      onChange={(e) => {
+                        if (showCookies || !backendSettings.youtube_cookies?.trim()) {
+                          setBackendSettings({ ...backendSettings, youtube_cookies: e.target.value });
+                          if (cookieTestMsg) setCookieTestMsg(null);
+                        }
+                      }}
+                      placeholder={`# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n.youtube.com\tTRUE\t/\tTRUE\t1750000000\tSID\txxxxxxxxx\n.youtube.com\tTRUE\t/\tTRUE\t1750000000\tHSID\txxxxxxxxx\n... or paste base64-encoded cookie text`}
+                      className="input-field text-xs font-mono w-full custom-scrollbar resize-y leading-relaxed"
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted">
+                    Supports raw Netscape tab-separated cookies, standard space-separated cookies, base64-encoded cookie text, or local cookie file paths.
+                  </p>
+                </div>
+
+                {/* Test / Validation & Action Buttons */}
+                <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-rule/50">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleTestCookies}
+                      disabled={testingCookies || !backendSettings.youtube_cookies?.trim()}
+                      className="btn-quiet py-2 px-3 text-xs flex items-center justify-center gap-1.5 shrink-0"
+                      title="Validates cookie structure and checks for authenticated YouTube session tokens"
+                    >
+                      <Zap size={13} className={testingCookies ? 'animate-spin text-brass' : 'text-brass'} />
+                      {testingCookies ? 'Validating Cookies...' : 'Validate Format & Auth'}
+                    </button>
+                    {backendSettings.youtube_cookies?.trim() && (
+                      <button
+                        type="button"
+                        onClick={handleClearCookies}
+                        disabled={settingsLoading}
+                        className="btn-quiet py-2 px-3 text-xs flex items-center justify-center gap-1.5 text-danger hover:text-red-400 shrink-0"
+                        title="Clears cookies from database and reverts yt-dlp to anonymous downloads"
+                      >
+                        <Trash2 size={13} /> Clear Cookies
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => saveBackendSettings()}
+                      disabled={settingsLoading}
+                      className="btn-primary py-2 px-5 text-xs flex items-center gap-2"
+                    >
+                      <Check size={14} /> Save YouTube Cookies
+                    </button>
+                  </div>
+                </div>
+
+                {cookieTestMsg && (
+                  <div className={`p-3 rounded-input text-xs flex items-start gap-2 border ${cookieTestMsg.ok ? 'bg-ok/10 border-ok/30 text-ok' : 'bg-danger/10 border-danger/30 text-danger'}`}>
+                    {cookieTestMsg.ok ? <CheckCircle2 size={15} className="shrink-0 mt-0.5" /> : <AlertCircle size={15} className="shrink-0 mt-0.5" />}
+                    <span>{cookieTestMsg.message}</span>
+                  </div>
+                )}
               </div>
 
               {/* SECTION 2: Direct YouTube Shorts Publishing */}

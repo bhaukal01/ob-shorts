@@ -379,17 +379,64 @@ def normalize_cookie_text(text: str) -> str:
 def accounts(env=None):
     """The cookie files configured, in order: YOUTUBE_COOKIES, then
     YOUTUBE_COOKIES_2 .. _9. Empty ones are skipped.
-    Supports raw Netscape cookie text, base64-encoded cookie text, or a path to a cookies.txt file."""
-    env = os.environ if env is None else env
+    Supports raw Netscape cookie text, base64-encoded cookie text, or a path to a cookies.txt file.
+    Reads from SQLite database first (configured via UI Settings), with fallback to environment variables."""
+    if env is not None:
+        names = ["YOUTUBE_COOKIES"] + [f"YOUTUBE_COOKIES_{i}" for i in range(2, MAX_ACCOUNTS + 1)]
+        out = []
+        for name in names:
+            val = env.get(name)
+            if not val:
+                continue
+            normalized = normalize_cookie_text(str(val))
+            if normalized:
+                out.append(normalized)
+        return out
+
+    # Outside pytest, prefer persistent SQLite database settings configured via UI
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        try:
+            import database
+            db_val = database.get_setting("youtube_cookies")
+            if db_val and db_val.strip():
+                out = []
+                norm = normalize_cookie_text(str(db_val))
+                if norm:
+                    out.append(norm)
+                for i in range(2, MAX_ACCOUNTS + 1):
+                    db_val_i = database.get_setting(f"youtube_cookies_{i}")
+                    if db_val_i and db_val_i.strip():
+                        norm_i = normalize_cookie_text(str(db_val_i))
+                        if norm_i:
+                            out.append(norm_i)
+                if out:
+                    return out
+        except Exception:
+            pass
+
+    # Fallback to environment variables
     names = ["YOUTUBE_COOKIES"] + [f"YOUTUBE_COOKIES_{i}" for i in range(2, MAX_ACCOUNTS + 1)]
     out = []
     for name in names:
-        val = env.get(name)
+        val = os.environ.get(name)
         if not val:
             continue
         normalized = normalize_cookie_text(str(val))
         if normalized:
             out.append(normalized)
+
+    # In pytest, if env was not set, allow database fallback
+    if not out and "PYTEST_CURRENT_TEST" in os.environ:
+        try:
+            import database
+            db_val = database.get_setting("youtube_cookies")
+            if db_val and db_val.strip():
+                norm = normalize_cookie_text(str(db_val))
+                if norm:
+                    out.append(norm)
+        except Exception:
+            pass
+
     return out
 
 

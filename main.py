@@ -958,7 +958,7 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
         print(f"🍪 Using YouTube account {yt_session.account + 1} of "
               f"{len(yt_account.accounts())}.")
     else:
-        print("⚠️ YOUTUBE_COOKIES env var not found.")
+        print("⚠️ YouTube cookies not configured (downloading anonymously).")
     
     # Optional HTTP proxy. Set PROXY_URL to route downloads through it; unset
     # (self-host) goes direct as before.
@@ -1345,7 +1345,7 @@ browsing on the same session.
 2. Go to https://www.youtube.com and sign in with your account.
 3. Export cookies using 'Get cookies.txt LOCALLY' extension (Netscape format).
 4. Close the Incognito window WITHOUT clicking 'Sign Out'.
-5. Paste the cookie text into YOUTUBE_COOKIES in .env (or app Settings) and restart.
+5. Paste the cookie text into the Settings page (or YOUTUBE_COOKIES in .env) — updates in Settings take effect immediately without restarting!
 """
         error_msg = f"""
 ❌ ================================================================= ❌
@@ -2684,6 +2684,10 @@ class S3TestRequest(BaseModel):
     region: Optional[str] = "auto"
 
 
+class CookieTestRequest(BaseModel):
+    cookies: Optional[str] = None
+
+
 class YouTubeCredentialsRequest(BaseModel):
     client_id: str
     client_secret: str
@@ -2947,6 +2951,52 @@ async def test_s3_endpoint(req: S3TestRequest):
             "status": "failed",
             "message": f"S3 connection test failed: {str(e)}",
         }
+
+
+@router.post("/api/youtube/cookies/test")
+async def test_youtube_cookies_endpoint(req: CookieTestRequest):
+    raw = (req.cookies or "").strip()
+    if not raw:
+        raw = (database.get_setting("youtube_cookies") or "").strip()
+    if not raw:
+        return {
+            "ok": False,
+            "valid": False,
+            "cookie_count": 0,
+            "has_auth": False,
+            "message": "No cookies provided or configured in settings.",
+        }
+
+    normalized = yt_account.normalize_cookie_text(raw)
+    if not normalized:
+        return {
+            "ok": False,
+            "valid": False,
+            "cookie_count": 0,
+            "has_auth": False,
+            "message": "Could not parse cookie text into valid Netscape format.",
+        }
+
+    lines = [ln for ln in normalized.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    cookie_names = set()
+    domains = set()
+    for ln in lines:
+        parts = ln.split("\t")
+        if len(parts) >= 7:
+            domains.add(parts[0])
+            cookie_names.add(parts[5])
+
+    auth_markers = {"SID", "HSID", "SSID", "LOGIN_INFO", "__Secure-3PSID", "SAPISID"}
+    has_auth = bool(auth_markers.intersection(cookie_names))
+
+    return {
+        "ok": True,
+        "valid": True,
+        "cookie_count": len(lines),
+        "has_auth": has_auth,
+        "domains": sorted(list(domains)),
+        "message": f"Valid Netscape format with {len(lines)} cookie(s). {'Authenticated YouTube session detected (SID/SSID/LOGIN_INFO).' if has_auth else 'Netscape format valid, but no login session cookies found.'}",
+    }
 
 
 @router.post("/api/publish/youtube/credentials")

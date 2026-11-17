@@ -266,7 +266,14 @@ def _probe_cookies():
     the blob is a live YouTube session.
     """
     global _static_cookie_jar, _static_cookie_src
-    raw = os.environ.get("YOUTUBE_COOKIES", "")
+    raw = ""
+    try:
+        import database
+        raw = database.get_setting("youtube_cookies") or ""
+    except Exception:
+        pass
+    if not raw:
+        raw = os.environ.get("YOUTUBE_COOKIES", "")
     if not raw:
         return None
     if raw == _static_cookie_src:

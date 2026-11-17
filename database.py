@@ -227,6 +227,7 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "llm_api_key": os.environ.get("LLM_API_KEY", ""),
         "llm_model": os.environ.get("LLM_MODEL", ""),
         "gemini_api_key": os.environ.get("GEMINI_API_KEY", ""),
+        "youtube_cookies": os.environ.get("YOUTUBE_COOKIES", ""),
         "upload_post_api_key": os.environ.get("".join(["UPLOAD_", "POST_", "API_KEY"]), ""),
         "public_api_url": os.environ.get("PUBLIC_API_URL", ""),
         "public_frontend_url": os.environ.get("PUBLIC_FRONTEND_URL", ""),
@@ -243,6 +244,11 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "s3_region": os.environ.get("S3_REGION") or os.environ.get("AWS_REGION", "auto"),
         "s3_connection_status": "",
     }
+
+    for i in range(2, 10):
+        val_i = os.environ.get(f"YOUTUBE_COOKIES_{i}")
+        if val_i:
+            defaults[f"youtube_cookies_{i}"] = val_i
 
     now = _now_iso()
     for k, v in defaults.items():
