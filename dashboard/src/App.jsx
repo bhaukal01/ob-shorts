@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film, Scissors, Flame, Cookie } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film, Scissors, Flame, Cookie, Info } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import ResultCard from './components/ResultCard';
@@ -558,6 +558,7 @@ function App() {
   const [s3TestMsg, setS3TestMsg] = useState(null);
   const [showS3Secret, setShowS3Secret] = useState(false);
   const [testingCookies, setTestingCookies] = useState(false);
+  const [testingLiveCookies, setTestingLiveCookies] = useState(false);
   const [cookieTestMsg, setCookieTestMsg] = useState(null);
   const [showCookies, setShowCookies] = useState(false);
 
@@ -1237,29 +1238,46 @@ function App() {
     }
   };
 
-  const handleTestCookies = async () => {
+  const handleTestCookies = async (live = false) => {
     if (!backendSettings.youtube_cookies || !backendSettings.youtube_cookies.trim()) {
       setCookieTestMsg({ ok: false, message: 'Please enter or paste YouTube cookies first.' });
       return;
     }
-    setTestingCookies(true);
+    if (live) {
+      setTestingLiveCookies(true);
+    } else {
+      setTestingCookies(true);
+    }
     setCookieTestMsg(null);
     try {
       const res = await apiFetch('/api/youtube/cookies/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cookies: backendSettings.youtube_cookies }),
+        body: JSON.stringify({ cookies: backendSettings.youtube_cookies, live }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
-        setCookieTestMsg({ ok: true, message: data.message });
+        if (live && data.live) {
+          setCookieTestMsg({
+            ok: data.live.ok,
+            message: data.live.message,
+            syntax: data.message,
+            live: data.live,
+          });
+        } else {
+          setCookieTestMsg({ ok: true, message: data.message, syntax: data.message });
+        }
       } else {
         setCookieTestMsg({ ok: false, message: data.message || 'Cookie validation failed.' });
       }
     } catch (err) {
       setCookieTestMsg({ ok: false, message: `Validation request failed: ${err.message}` });
     } finally {
-      setTestingCookies(false);
+      if (live) {
+        setTestingLiveCookies(false);
+      } else {
+        setTestingCookies(false);
+      }
     }
   };
 
@@ -2972,18 +2990,46 @@ function App() {
                   </p>
                 </div>
 
+                {/* Optional Outbound Proxy */}
+                <div className="space-y-1.5 pt-2 border-t border-rule/30">
+                  <label className="text-xs font-mono text-muted uppercase tracking-wider flex items-center justify-between">
+                    <span>Outbound Proxy URL (Optional)</span>
+                    <span className="text-[11px] text-muted lowercase">residential or static proxy</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={backendSettings.proxy_url || ''}
+                    onChange={(e) => setBackendSettings({ ...backendSettings, proxy_url: e.target.value })}
+                    placeholder="http://user:pass@proxy.example.com:8080"
+                    className="input-field text-xs font-mono w-full"
+                  />
+                  <p className="text-[11px] text-muted">
+                    If your VPS datacenter IP is blocked by YouTube, route downloads and live tests through an HTTP/HTTPS proxy.
+                  </p>
+                </div>
+
                 {/* Test / Validation & Action Buttons */}
                 <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-rule/50">
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={handleTestCookies}
-                      disabled={testingCookies || !backendSettings.youtube_cookies?.trim()}
+                      onClick={() => handleTestCookies(false)}
+                      disabled={testingCookies || testingLiveCookies || !backendSettings.youtube_cookies?.trim()}
                       className="btn-quiet py-2 px-3 text-xs flex items-center justify-center gap-1.5 shrink-0"
-                      title="Validates cookie structure and checks for authenticated YouTube session tokens"
+                      title="Validates Netscape formatting and checks for session markers"
                     >
                       <Zap size={13} className={testingCookies ? 'animate-spin text-brass' : 'text-brass'} />
-                      {testingCookies ? 'Validating Cookies...' : 'Validate Format & Auth'}
+                      {testingCookies ? 'Validating...' : 'Validate Format (Syntax)'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestCookies(true)}
+                      disabled={testingCookies || testingLiveCookies || !backendSettings.youtube_cookies?.trim()}
+                      className="btn-quiet py-2 px-3 text-xs flex items-center justify-center gap-1.5 shrink-0 text-cyan-400 hover:text-cyan-300 border-cyan-500/30"
+                      title="Performs a live metadata probe with yt-dlp to verify YouTube actively accepts this session"
+                    >
+                      <Globe size={13} className={testingLiveCookies ? 'animate-spin text-cyan-400' : 'text-cyan-400'} />
+                      {testingLiveCookies ? 'Testing Live on YouTube...' : 'Test Live on YouTube'}
                     </button>
                     {backendSettings.youtube_cookies?.trim() && (
                       <button
@@ -3004,17 +3050,39 @@ function App() {
                       disabled={settingsLoading}
                       className="btn-primary py-2 px-5 text-xs flex items-center gap-2"
                     >
-                      <Check size={14} /> Save YouTube Cookies
+                      <Check size={14} /> Save YouTube Settings
                     </button>
                   </div>
                 </div>
 
                 {cookieTestMsg && (
-                  <div className={`p-3 rounded-input text-xs flex items-start gap-2 border ${cookieTestMsg.ok ? 'bg-ok/10 border-ok/30 text-ok' : 'bg-danger/10 border-danger/30 text-danger'}`}>
-                    {cookieTestMsg.ok ? <CheckCircle2 size={15} className="shrink-0 mt-0.5" /> : <AlertCircle size={15} className="shrink-0 mt-0.5" />}
-                    <span>{cookieTestMsg.message}</span>
+                  <div className={`p-3 rounded-input text-xs flex flex-col gap-1 border ${cookieTestMsg.ok ? 'bg-ok/10 border-ok/30 text-ok' : 'bg-danger/10 border-danger/30 text-danger'}`}>
+                    <div className="flex items-start gap-2">
+                      {cookieTestMsg.ok ? <CheckCircle2 size={15} className="shrink-0 mt-0.5" /> : <AlertCircle size={15} className="shrink-0 mt-0.5" />}
+                      <span className="font-medium">{cookieTestMsg.message}</span>
+                    </div>
+                    {cookieTestMsg.syntax && cookieTestMsg.syntax !== cookieTestMsg.message && (
+                      <div className="text-[11px] opacity-80 pl-6">
+                        Format check: {cookieTestMsg.syntax}
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Incognito Export Helper Guide */}
+                <div className="p-3 bg-paper2/60 border border-rule/40 rounded-input space-y-1.5 text-xs">
+                  <div className="font-semibold text-ink flex items-center gap-1.5">
+                    <Info size={13} className="text-brass" />
+                    <span>How to prevent YouTube session rotation (Sign in bot error fix):</span>
+                  </div>
+                  <ol className="list-decimal list-inside text-muted space-y-1 text-[11px] leading-relaxed">
+                    <li>Open a fresh <strong>Incognito / Private</strong> browser window.</li>
+                    <li>Go to <span className="text-ink">https://www.youtube.com</span> and sign in.</li>
+                    <li>Export cookies using <em>Get cookies.txt LOCALLY</em> extension.</li>
+                    <li>Close the Incognito window <strong>without clicking Sign Out</strong>.</li>
+                    <li>Paste here, click <strong>Save</strong>, then verify with <strong>Test Live on YouTube</strong>.</li>
+                  </ol>
+                </div>
               </div>
 
               {/* SECTION 2: Direct YouTube Shorts Publishing */}

@@ -960,9 +960,14 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
     else:
         print("⚠️ YouTube cookies not configured (downloading anonymously).")
     
-    # Optional HTTP proxy. Set PROXY_URL to route downloads through it; unset
+    # Optional HTTP proxy. Set PROXY_URL or proxy_url in database settings to route downloads through it; unset
     # (self-host) goes direct as before.
     _proxy = (os.environ.get("PROXY_URL", "").strip() or None) if allow_paid else None
+    if not _proxy and allow_paid:
+        try:
+            _proxy = (database.get_setting("proxy_url") or "").strip() or None
+        except Exception:
+            _proxy = None
     if _proxy:
         print("🌐 Using proxy for download.")
 
@@ -2739,6 +2744,8 @@ class S3TestRequest(BaseModel):
 
 class CookieTestRequest(BaseModel):
     cookies: Optional[str] = None
+    live: Optional[bool] = False
+    test_url: Optional[str] = None
 
 
 class YouTubeCredentialsRequest(BaseModel):
@@ -3042,13 +3049,100 @@ async def test_youtube_cookies_endpoint(req: CookieTestRequest):
     auth_markers = {"SID", "HSID", "SSID", "LOGIN_INFO", "__Secure-3PSID", "SAPISID"}
     has_auth = bool(auth_markers.intersection(cookie_names))
 
+    syntax_msg = (
+        f"Valid Netscape format with {len(lines)} cookie(s). "
+        f"{'Authenticated YouTube session detected (SID/SSID/LOGIN_INFO).' if has_auth else 'Netscape format valid, but no login session cookies found.'}"
+    )
+
+    live_result = None
+    if req.live:
+        import tempfile
+        import yt_dlp
+        test_video = (req.test_url or "").strip() or "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+        warnings_collected = []
+
+        class _CollectLogger:
+            def debug(self, msg): pass
+            def info(self, msg): pass
+            def warning(self, msg): warnings_collected.append(str(msg))
+            def error(self, msg): warnings_collected.append(str(msg))
+
+        fd, tmp_cookie_file = tempfile.mkstemp(prefix="yt_test_ck_", suffix=".txt")
+        try:
+            with open(tmp_cookie_file, "w") as f:
+                f.write(normalized)
+            os.close(fd)
+
+            proxy = os.environ.get("PROXY_URL", "").strip() or None
+            if not proxy:
+                try:
+                    proxy = (database.get_setting("proxy_url") or "").strip() or None
+                except Exception:
+                    proxy = None
+
+            probe_opts = {
+                'quiet': True,
+                'no_warnings': False,
+                'logger': _CollectLogger(),
+                'cookiefile': tmp_cookie_file,
+                'proxy': proxy,
+                'socket_timeout': 15,
+                'retries': 1,
+                'noplaylist': True,
+            }
+            try:
+                with yt_dlp.YoutubeDL(probe_opts) as ydl:
+                    info = ydl.extract_info(test_video, download=False)
+
+                is_rotated = any("no longer valid" in w or "rotated" in w for w in warnings_collected)
+                if is_rotated:
+                    live_result = {
+                        "ok": False,
+                        "status": "rotated",
+                        "message": "YouTube warned: The provided cookies are no longer valid and were rotated in your browser. Google has revoked this session. Please export fresh cookies from a new Incognito session.",
+                    }
+                else:
+                    live_result = {
+                        "ok": True,
+                        "status": "verified",
+                        "video_title": info.get("title", "Test Video"),
+                        "message": f"YouTube handshake successful! Active authenticated session verified on YouTube (Title: {info.get('title', '')[:40]}).",
+                    }
+            except Exception as e:
+                err_msg = str(e)
+                if "Sign in to confirm you’re not a bot" in err_msg or "Sign in to confirm you're not a bot" in err_msg:
+                    live_result = {
+                        "ok": False,
+                        "status": "bot_blocked",
+                        "message": "YouTube rejected the session with 'Sign in to confirm you’re not a bot'. The cookies are expired/revoked, or YouTube is blocking datacenter IPs for this session. Please re-export from Incognito or use a proxy.",
+                    }
+                elif "no longer valid" in err_msg or "rotated" in err_msg:
+                    live_result = {
+                        "ok": False,
+                        "status": "rotated",
+                        "message": "YouTube reported cookies are no longer valid / rotated in browser. Please re-export from a fresh Incognito session.",
+                    }
+                else:
+                    live_result = {
+                        "ok": False,
+                        "status": "error",
+                        "message": f"Live YouTube test failed: {err_msg[:200]}",
+                    }
+        finally:
+            if os.path.exists(tmp_cookie_file):
+                try:
+                    os.remove(tmp_cookie_file)
+                except OSError:
+                    pass
+
     return {
         "ok": True,
         "valid": True,
         "cookie_count": len(lines),
         "has_auth": has_auth,
         "domains": sorted(list(domains)),
-        "message": f"Valid Netscape format with {len(lines)} cookie(s). {'Authenticated YouTube session detected (SID/SSID/LOGIN_INFO).' if has_auth else 'Netscape format valid, but no login session cookies found.'}",
+        "message": syntax_msg,
+        "live": live_result,
     }
 
 

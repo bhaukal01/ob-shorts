@@ -70,6 +70,14 @@ def main() -> int:
         # (self-host) when the environment has none.
         session = yt_account.Session()
         cookies_path = session.path or _find_cookies_path()
+        _proxy = os.environ.get("PROXY_URL", "").strip() or None
+        if not _proxy:
+            try:
+                import database
+                _proxy = (database.get_setting("proxy_url") or "").strip() or None
+            except Exception:
+                _proxy = None
+
         base_opts = {
             'quiet': True,
             'no_warnings': False,
@@ -80,6 +88,7 @@ def main() -> int:
             # A watch?v=X&list=... link is the one video; without this
             # yt-dlp walks the whole list (see cloud/metering.py).
             'noplaylist': True,
+            'proxy': _proxy,
         }
         # yt-dlp's default player clients (tv_downgraded/web_safari with
         # cookies, android_vr/web_safari anonymous) are the ones that still

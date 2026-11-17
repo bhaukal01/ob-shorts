@@ -243,6 +243,7 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "s3_secret_key": os.environ.get("S3_SECRET_KEY") or os.environ.get("".join(["AWS_", "SECRET_", "ACCESS_", "KEY"]), ""),
         "s3_region": os.environ.get("S3_REGION") or os.environ.get("AWS_REGION", "auto"),
         "s3_connection_status": "",
+        "proxy_url": os.environ.get("PROXY_URL", ""),
     }
 
     for i in range(2, 10):

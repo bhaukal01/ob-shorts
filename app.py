@@ -117,6 +117,9 @@ def child_env(base=None):
                 db_yt_cookies_i = database.get_setting(f"youtube_cookies_{i}")
                 if db_yt_cookies_i and db_yt_cookies_i.strip():
                     env[f"YOUTUBE_COOKIES_{i}"] = db_yt_cookies_i.strip()
+            db_proxy = database.get_setting("proxy_url")
+            if db_proxy and db_proxy.strip() and "PROXY_URL" not in env:
+                env["PROXY_URL"] = db_proxy.strip()
         except Exception:
             pass
     if "YOUTUBE_COOKIES_FILE" in os.environ:

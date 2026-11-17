@@ -89,3 +89,70 @@ def test_test_youtube_cookies_endpoint_empty(client):
     data = res.json()
     assert data["ok"] is False
     assert "No cookies" in data["message"]
+
+
+def test_test_youtube_cookies_endpoint_live_verified(client, monkeypatch):
+    class DummyYDL:
+        def __init__(self, opts):
+            self.opts = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, download=False):
+            return {"title": "Verified Video"}
+
+    import yt_dlp
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", DummyYDL)
+
+    res = client.post("/api/youtube/cookies/test", json={
+        "cookies": NETSCAPE_SAMPLE,
+        "live": True,
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert data["live"] is not None
+    assert data["live"]["ok"] is True
+    assert data["live"]["status"] == "verified"
+    assert "handshake successful" in data["live"]["message"].lower()
+
+
+def test_test_youtube_cookies_endpoint_live_rotated(client, monkeypatch):
+    class DummyYDL:
+        def __init__(self, opts):
+            self.opts = opts
+            if "logger" in opts:
+                opts["logger"].warning("The provided YouTube account cookies are no longer valid. They have likely been rotated in the browser as a security measure.")
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, download=False):
+            return {"title": "Rotated Video"}
+
+    import yt_dlp
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", DummyYDL)
+
+    res = client.post("/api/youtube/cookies/test", json={
+        "cookies": NETSCAPE_SAMPLE,
+        "live": True,
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert data["live"] is not None
+    assert data["live"]["ok"] is False
+    assert data["live"]["status"] == "rotated"
+    assert "rotated" in data["live"]["message"].lower()
+
+
+def test_proxy_url_setting_and_child_env(monkeypatch):
+    import app
+    monkeypatch.delenv("PROXY_URL", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    database.set_setting("proxy_url", "http://user:pass@proxy.example.com:8080")
+    env = app.child_env()
+    assert env.get("PROXY_URL") == "http://user:pass@proxy.example.com:8080"
+    database.set_setting("proxy_url", "")
