@@ -119,6 +119,8 @@ def child_env(base=None):
                     env[f"YOUTUBE_COOKIES_{i}"] = db_yt_cookies_i.strip()
         except Exception:
             pass
+    if "YOUTUBE_COOKIES_FILE" in os.environ:
+        env["YOUTUBE_COOKIES_FILE"] = os.environ["YOUTUBE_COOKIES_FILE"]
     return env
 
 

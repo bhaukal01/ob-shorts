@@ -20,16 +20,9 @@ load_dotenv()
 
 
 def _find_cookies_path():
-    # Mirrors main.py's cookie discovery.
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    for candidate in [
-        os.path.join(script_dir, 'www.youtube.com_cookies.txt'),
-        os.path.join(script_dir, 'cookies.txt'),
-        '/app/cookies.txt',
-    ]:
-        if os.path.exists(candidate):
-            return candidate
-    return None
+    # Mirrors yt_account and main.py cookie discovery.
+    import yt_account
+    return yt_account.find_cookies_path()
 
 
 def main() -> int:

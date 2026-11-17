@@ -376,6 +376,38 @@ def normalize_cookie_text(text: str) -> str:
     return (result + "\n") if result else ""
 
 
+def find_cookies_path():
+    """Find a candidate cookie file on disk from standard OpenShorts locations.
+
+    Checks:
+    1. YOUTUBE_COOKIES_FILE env var
+    2. www.youtube.com_cookies.txt (in script directory)
+    3. cookies.txt (in script directory)
+    4. /app/cookies.txt (Docker / container deployment)
+    5. /app/www.youtube.com_cookies.txt
+    6. /workspace/cookies.txt (RunPod deployment)
+    7. ./cookies.txt / ./www.youtube.com_cookies.txt (current working directory)
+    """
+    env_file = os.environ.get("YOUTUBE_COOKIES_FILE", "").strip()
+    if env_file and os.path.isfile(env_file):
+        return env_file
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(script_dir, "www.youtube.com_cookies.txt"),
+        os.path.join(script_dir, "cookies.txt"),
+        "/app/cookies.txt",
+        "/app/www.youtube.com_cookies.txt",
+        "/workspace/cookies.txt",
+        os.path.join(os.getcwd(), "cookies.txt"),
+        os.path.join(os.getcwd(), "www.youtube.com_cookies.txt"),
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    return None
+
+
 def accounts(env=None):
     """The cookie files configured, in order: YOUTUBE_COOKIES, then
     YOUTUBE_COOKIES_2 .. _9. Empty ones are skipped.
@@ -411,6 +443,17 @@ def accounts(env=None):
                     return out
         except Exception:
             pass
+
+        # Check candidate disk file in env
+        env_file = env.get("YOUTUBE_COOKIES_FILE")
+        if env_file and os.path.isfile(str(env_file)):
+            try:
+                with open(str(env_file), "r", encoding="utf-8", errors="replace") as f:
+                    norm = normalize_cookie_text(f.read())
+                    if norm:
+                        return [norm]
+            except OSError:
+                pass
         return []
 
     # Outside pytest, prefer persistent SQLite database settings configured via UI
@@ -456,6 +499,18 @@ def accounts(env=None):
                     out.append(norm)
         except Exception:
             pass
+
+    # Fallback to candidate cookie file on disk (OpenShorts standard paths)
+    if not out:
+        disk_cookie = find_cookies_path()
+        if disk_cookie:
+            try:
+                with open(disk_cookie, "r", encoding="utf-8", errors="replace") as f:
+                    disk_norm = normalize_cookie_text(f.read())
+                    if disk_norm:
+                        out.append(disk_norm)
+            except OSError:
+                pass
 
     return out
 
@@ -607,6 +662,10 @@ class Session:
         self.path = None
         self.answers = 0
         self._use(pick(count=len(self._texts)))
+        if self.path is None:
+            disk_cookie = find_cookies_path()
+            if disk_cookie and os.path.isfile(disk_cookie):
+                self.path = disk_cookie
         if self.path:
             Session._live[self.path] = self
             atexit.register(self.close)
@@ -669,6 +728,7 @@ class Session:
         if path:
             Session._live.pop(path, None)
             try:
-                os.remove(path)
+                if os.path.basename(path).startswith("yt_ck_"):
+                    os.remove(path)
             except OSError:
                 pass

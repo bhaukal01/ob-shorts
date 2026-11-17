@@ -11,6 +11,12 @@ def client():
     app.include_router(main.router)
     return TestClient(app, raise_server_exceptions=False)
 
+@pytest.fixture(autouse=True)
+def clean_cookies():
+    yield
+    database.set_setting("youtube_cookies", "")
+    database.set_setting("youtube_cookies_2", "")
+
 NETSCAPE_SAMPLE = """# Netscape HTTP Cookie File
 # http://curl.haxx.se/rfc/cookie_spec.html
 .youtube.com\tTRUE\t/\tTRUE\t1750000000\tSID\tsid_token_12345

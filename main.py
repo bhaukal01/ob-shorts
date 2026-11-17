@@ -953,10 +953,10 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
     # ...), as a private cookie file. Never print its CONTENT: it is a live
     # YouTube session.
     yt_session = yt_account.Session()
-    cookies_path = yt_session.path
-    if cookies_path:
-        print(f"🍪 Using YouTube account {yt_session.account + 1} of "
-              f"{len(yt_account.accounts())}.")
+    cookies_path = yt_session.path or yt_account.find_cookies_path()
+    if cookies_path and os.path.exists(cookies_path):
+        acct_label = f"account {yt_session.account + 1} of {len(yt_account.accounts())}" if yt_session.account is not None else "cookie file"
+        print(f"🍪 Using YouTube {acct_label}.")
     else:
         print("⚠️ YouTube cookies not configured (downloading anonymously).")
     
@@ -1012,7 +1012,7 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
 
     def _base_opts(extractor_args, proxy, cookies=True, cookiefile=None):
         cf = cookiefile if cookiefile is not None else (cookies_path if (cookies and cookies_path and os.path.exists(cookies_path)) else None)
-        return {
+        opts = {
             'quiet': False, 'verbose': True, 'no_warnings': False,
             # No progress lines: one per update of every download filled the
             # API log, rotating it away within minutes. The start, the
@@ -1026,8 +1026,10 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             # entry of the list into the SAME outtmpl (the title is the
             # playlist's), paying for all of them and keeping the last.
             'noplaylist': True,
-            'extractor_args': extractor_args,
         }
+        if extractor_args:
+            opts['extractor_args'] = extractor_args
+        return opts
 
     # Wire bytes actually pulled through the (paid) proxy, summed across
     # fragments/streams. Reported to app.py via the PROXY_BYTES= line below.
@@ -1192,6 +1194,17 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             _direct_first, _statics, _proxy, bool(hd_args), youtube=is_youtube_url(url),
             skip_statics=_skip_statics)
     ]
+    # For self-hosted instances without a proxy pool, if YouTube cookies are present,
+    # add a clean native-auth attempt (no custom player_client) right after HD.
+    # Native client with cookies is the exact recipe quality_probe.py uses to reliably probe formats.
+    if not _proxy and not _statics and cookies_path and os.path.exists(cookies_path):
+        native_auth_attempt = ('native-auth', None, _hd_fmt_for(False), None, True)
+        new_attempts = []
+        for att in attempts:
+            new_attempts.append(att)
+            if att[0] == 'HD':
+                new_attempts.append(native_auth_attempt)
+        attempts = new_attempts
     if not is_youtube_url(url):
         print("🌐 Direct file URL: downloading from the server's own IP (no proxy).")
 
@@ -1274,12 +1287,7 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
     # YouTube's datacenter IP bot detection targets desktop web clients (web, tv_samsung, visionos)
     # when cookies are missing or invalid, but the mobile Android client is exempt.
     if sanitized_title is None and not (last_err is not None and _content_block(str(last_err))):
-        print("🚨 Standard download strategies failed or were blocked. Attempting emergency rescue via mobile clients...")
-        rescue_args = {
-            **(_bgutil_script and {'youtubepot-bgutilscript': {'script_path': [_bgutil_script]}} or {}),
-            **(_bgutil_http and {'youtubepot-bgutilhttp': {'base_url': [_bgutil_http]}} or {}),
-            'youtube': {'player_client': ['android', 'ios', 'mweb', 'web']},
-        }
+        print("🚨 Standard download strategies failed or were blocked. Attempting emergency rescue...")
         rescue_fmt = (
             'bestvideo[vcodec^=avc1][height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
             'bestvideo[height<=1080]+bestaudio/'
@@ -1299,37 +1307,59 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                     f.write(raw_accounts[0])
             except Exception:
                 rescue_cookie_path = None
+        elif yt_session.path and os.path.exists(yt_session.path):
+            rescue_cookie_path = yt_session.path
+        else:
+            disk_cookie = yt_account.find_cookies_path()
+            if disk_cookie and os.path.exists(disk_cookie):
+                rescue_cookie_path = disk_cookie
+
+        pot_args = {
+            **(_bgutil_script and {'youtubepot-bgutilscript': {'script_path': [_bgutil_script]}} or {}),
+            **(_bgutil_http and {'youtubepot-bgutilhttp': {'base_url': [_bgutil_http]}} or {}),
+        }
+
+        # Build rescue plans:
+        # IMPORTANT (OpenShorts rule):
+        # 1. When cookies are available, use native yt-dlp client resolution (no player_client override)
+        #    or web/mweb clients. NEVER send android/ios clients with cookies because mobile clients
+        #    do not accept browser cookies and yt-dlp strips them, triggering bot checks.
+        # 2. When anonymous (no cookies or cookies expired), try fallback clients with PO token.
+        rescue_plans = []
+        if rescue_cookie_path:
+            rescue_plans.append(("auth-native", pot_args or None, True))
+            rescue_plans.append(("auth-web", {**pot_args, 'youtube': {'player_client': ['default', 'mweb']}}, True))
+        rescue_plans.append(("anon-clients", {**pot_args, 'youtube': {'player_client': ['default', 'mweb', 'android_vr', 'web_safari']}}, False))
 
         try:
             for r_proxy in rescue_proxies:
-                cookie_attempts = [True, False] if rescue_cookie_path else [False]
-                for r_cookies in cookie_attempts:
+                proxy_label = "via proxy" if r_proxy else "direct"
+                for plan_name, r_args, r_cookies in rescue_plans:
                     auth_label = "with cookies" if r_cookies else "anonymous"
-                    proxy_label = "via proxy" if r_proxy else "direct"
                     try:
-                        print(f"📥 Emergency rescue attempt ({proxy_label}, {auth_label})")
+                        print(f"📥 Emergency rescue attempt ({proxy_label}, {plan_name}, {auth_label})")
                         sanitized_title = _attempt(
-                            rescue_args, rescue_fmt, r_proxy, cookies=r_cookies,
+                            r_args, rescue_fmt, r_proxy, cookies=r_cookies,
                             cookiefile=rescue_cookie_path if r_cookies else None
                         )
                         if sanitized_title is not None:
-                            print(f"✅ Emergency rescue succeeded! Video downloaded via mobile client ({auth_label}).")
-                            attempt_log.append({"label": f"rescue-mobile-{auth_label}", "ok": True,
+                            print(f"✅ Emergency rescue succeeded! Video downloaded via {plan_name} ({auth_label}).")
+                            attempt_log.append({"label": f"rescue-{plan_name}-{auth_label}", "ok": True,
                                                 "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
                                                 "paid": r_proxy is not None and r_proxy == _proxy})
                             last_err = None
                             account_limited = False
                             break
                     except Exception as e_rescue:
-                        print(f"⚠️ Emergency rescue attempt failed ({auth_label}): {str(e_rescue)[:200]}")
-                        attempt_log.append({"label": f"rescue-mobile-{auth_label}", "ok": False,
+                        print(f"⚠️ Emergency rescue attempt '{plan_name}' failed ({auth_label}): {str(e_rescue)[:200]}")
+                        attempt_log.append({"label": f"rescue-{plan_name}-{auth_label}", "ok": False,
                                             "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
                                             "paid": r_proxy is not None and r_proxy == _proxy,
                                             "error": str(e_rescue)[:300]})
                 if sanitized_title is not None:
                     break
         finally:
-            if rescue_cookie_path:
+            if rescue_cookie_path and os.path.basename(rescue_cookie_path).startswith("yt_rescue_ck_"):
                 try:
                     os.remove(rescue_cookie_path)
                 except OSError:

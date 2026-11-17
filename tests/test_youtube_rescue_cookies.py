@@ -7,15 +7,28 @@ import app as app_module
 import database
 
 
-def test_hd_clients_excludes_tv_and_visionos():
-    """Ensure modern HD_CLIENTS avoids TV and VisionOS clients which fail with web cookies."""
-    for client in yt_clients.HD_CLIENTS:
-        assert "tv" not in client.lower()
-        assert "visionos" not in client.lower()
+@pytest.fixture(autouse=True)
+def clean_cookies():
+    yield
+    database.set_setting("youtube_cookies", "")
+    database.set_setting("youtube_cookies_2", "")
+
+
+def test_hd_clients_standard_openshorts():
+    """Ensure HD_CLIENTS follows OpenShorts proven upstream client selection (default, mweb)."""
+    assert "default" in yt_clients.HD_CLIENTS
     assert "mweb" in yt_clients.HD_CLIENTS
-    assert "android" in yt_clients.HD_CLIENTS
-    assert "ios" in yt_clients.HD_CLIENTS
-    assert "web" in yt_clients.HD_CLIENTS
+    # Ensure android and ios are not in HD_CLIENTS as they reject Netscape browser cookies
+    assert "android" not in yt_clients.HD_CLIENTS
+    assert "ios" not in yt_clients.HD_CLIENTS
+
+
+def test_find_cookies_path(tmp_path, monkeypatch):
+    """Ensure find_cookies_path discovers candidate cookie files."""
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tfile_test\n")
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(cookie_file))
+    assert yt_account.find_cookies_path() == str(cookie_file)
 
 
 def test_child_env_propagates_db_youtube_cookies(monkeypatch):
