@@ -16,7 +16,7 @@ def test_hd_needs_a_pot_provider():
 
 def test_hd_lists_default_and_mweb_with_the_provider():
     got = yt_clients.hd_extractor_args("", "/opt/gen.js")
-    assert got["youtube"]["player_client"] == ["default", "mweb"]
+    assert got["youtube"]["player_client"] == ["mweb", "web", "android", "ios"]
     assert got["youtubepot-bgutilscript"] == {"script_path": ["/opt/gen.js"]}
     http = yt_clients.hd_extractor_args("http://pot:4416", "/opt/gen.js")
     assert http["youtubepot-bgutilhttp"] == {"base_url": ["http://pot:4416"]}
@@ -30,8 +30,7 @@ def test_fallback_never_skips_the_webpage():
                  yt_clients.fallback_extractor_args("", "/opt/gen.js")):
         assert "player_skip" not in args["youtube"]
         assert "mweb" in args["youtube"]["player_client"]
-        for dead in ("tv_embed", "android"):
-            assert dead not in args["youtube"]["player_client"]
+        assert "tv_embed" not in args["youtube"]["player_client"]
 
 
 def test_fallback_keeps_the_provider_when_configured():
@@ -42,7 +41,7 @@ def test_fallback_keeps_the_provider_when_configured():
 def test_lists_are_copies():
     a = yt_clients.hd_extractor_args("", "/x.js")["youtube"]["player_client"]
     a.append("web_safari")
-    assert yt_clients.hd_extractor_args("", "/x.js")["youtube"]["player_client"] == ["default", "mweb"]
+    assert yt_clients.hd_extractor_args("", "/x.js")["youtube"]["player_client"] == ["mweb", "web", "android", "ios"]
 
 
 def test_probe_uses_the_same_lists(monkeypatch):

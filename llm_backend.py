@@ -233,8 +233,14 @@ def generate_json(prompt: Union[str, list], schema: Type[BaseModel], model: Opti
 
     url = f"{base_url()}/chat/completions"
     model = model or model_name()
+    schema_json = json.dumps(schema.model_json_schema(), indent=2)
+    sys_content = (
+        "You are an AI assistant that analyzes video transcripts and always answers with a single JSON object matching this schema:\n"
+        f"```json\n{schema_json}\n```\n"
+        "Output ONLY the valid JSON object. Do not include markdown code fences, notes, or explanations outside the JSON."
+    )
     messages = [
-        {"role": "system", "content": "You answer with a single JSON object and nothing else."},
+        {"role": "system", "content": sys_content},
         {"role": "user", "content": prompt},
     ]
     last_rejection: Optional[str] = None

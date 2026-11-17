@@ -107,6 +107,18 @@ def child_env(base=None):
     env = dict(os.environ if base is None else base)
     for name in CHILD_ENV_DENYLIST:
         env.pop(name, None)
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        try:
+            import database
+            db_yt_cookies = database.get_setting("youtube_cookies")
+            if db_yt_cookies and db_yt_cookies.strip():
+                env["YOUTUBE_COOKIES"] = db_yt_cookies.strip()
+            for i in range(2, 10):
+                db_yt_cookies_i = database.get_setting(f"youtube_cookies_{i}")
+                if db_yt_cookies_i and db_yt_cookies_i.strip():
+                    env[f"YOUTUBE_COOKIES_{i}"] = db_yt_cookies_i.strip()
+        except Exception:
+            pass
     return env
 
 
@@ -5850,6 +5862,14 @@ async def process_endpoint(
     if db_groq_model:
         env["GROQ_WHISPER_MODEL"] = db_groq_model
 
+    db_yt_cookies = database.get_setting("youtube_cookies")
+    if db_yt_cookies and db_yt_cookies.strip():
+        env["YOUTUBE_COOKIES"] = db_yt_cookies.strip()
+    for i in range(2, 10):
+        db_yt_cookies_i = database.get_setting(f"youtube_cookies_{i}")
+        if db_yt_cookies_i and db_yt_cookies_i.strip():
+            env[f"YOUTUBE_COOKIES_{i}"] = db_yt_cookies_i.strip()
+
     if api_key:
         env["GEMINI_API_KEY"] = api_key # Override with key from request
     elif database.get_setting("gemini_api_key"):
@@ -6197,6 +6217,14 @@ def submit_monitored_video_job(
     db_groq_model = database.get_setting("groq_whisper_model")
     if db_groq_model:
         env["GROQ_WHISPER_MODEL"] = db_groq_model
+
+    db_yt_cookies = database.get_setting("youtube_cookies")
+    if db_yt_cookies and db_yt_cookies.strip():
+        env["YOUTUBE_COOKIES"] = db_yt_cookies.strip()
+    for i in range(2, 10):
+        db_yt_cookies_i = database.get_setting(f"youtube_cookies_{i}")
+        if db_yt_cookies_i and db_yt_cookies_i.strip():
+            env[f"YOUTUBE_COOKIES_{i}"] = db_yt_cookies_i.strip()
 
     if database.get_setting("gemini_api_key"):
         env["GEMINI_API_KEY"] = database.get_setting("gemini_api_key")

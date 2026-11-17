@@ -1010,14 +1010,15 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                 'bestvideo[vcodec^=avc1][height<=1080]+bestaudio/'
                 'best[height<=1080][ext=mp4]/best[ext=mp4]/best')
 
-    def _base_opts(extractor_args, proxy, cookies=True):
+    def _base_opts(extractor_args, proxy, cookies=True, cookiefile=None):
+        cf = cookiefile if cookiefile is not None else (cookies_path if (cookies and cookies_path and os.path.exists(cookies_path)) else None)
         return {
             'quiet': False, 'verbose': True, 'no_warnings': False,
             # No progress lines: one per update of every download filled the
             # API log, rotating it away within minutes. The start, the
             # "Download completed" line, errors and retries still print.
             'noprogress': True,
-            'cookiefile': cookies_path if (cookies and cookies_path) else None,
+            'cookiefile': cf,
             'proxy': proxy, 'socket_timeout': 30, 'retries': 10, 'fragment_retries': 10,
             'nocheckcertificate': True, 'cachedir': False,
             # A `watch?v=X&list=...` link is the one video the user was
@@ -1026,12 +1027,6 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             # playlist's), paying for all of them and keeping the last.
             'noplaylist': True,
             'extractor_args': extractor_args,
-            'http_headers': {
-                'User-Agent': (
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                    'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                ),
-            },
         }
 
     # Wire bytes actually pulled through the (paid) proxy, summed across
@@ -1105,7 +1100,7 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             print(f"   ℹ️ Early audio skipped ({type(e).__name__}: {e}) — "
                   f"transcribing once the video is in.", flush=True)
 
-    def _attempt(extractor_args, fmt, proxy, cookies=True):
+    def _attempt(extractor_args, fmt, proxy, cookies=True, cookiefile=None):
         _dl_bytes["total"] = 0
         _dl_bytes["partial"] = 0
         # Extracted ONCE, unprocessed, and handed to the download below: a
@@ -1114,8 +1109,8 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
         # An extraction that sends the account's cookies takes one of the
         # account's slots and keeps its distance from the previous one
         # (yt_account): the account's request budget is shared by every job.
-        with (yt_session.request() if (cookies and cookies_path) else contextlib.nullcontext()):
-            with yt_dlp.YoutubeDL(_base_opts(extractor_args, proxy, cookies)) as ydl:
+        with (yt_session.request() if ((cookies and cookies_path) or cookiefile) else contextlib.nullcontext()):
+            with yt_dlp.YoutubeDL(_base_opts(extractor_args, proxy, cookies, cookiefile=cookiefile)) as ydl:
                 info = ydl.extract_info(url, download=False, process=False)
         # Media URLs another program will fetch (ffmpeg on a ranged or HLS
         # download) resolve outside the Python guard: check them here. YouTube's
@@ -1150,7 +1145,7 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
         if os.path.exists(expected):
             os.remove(expected)
         dl_opts = {
-            **_base_opts(extractor_args, proxy, cookies),
+            **_base_opts(extractor_args, proxy, cookies, cookiefile=cookiefile),
             'format': fmt,
             'outtmpl': os.path.join(output_dir, f'{sanitized}.%(ext)s'),
             'merge_output_format': 'mp4', 'overwrites': True,
@@ -1279,11 +1274,11 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
     # YouTube's datacenter IP bot detection targets desktop web clients (web, tv_samsung, visionos)
     # when cookies are missing or invalid, but the mobile Android client is exempt.
     if sanitized_title is None and not (last_err is not None and _content_block(str(last_err))):
-        print("🚨 Standard download strategies failed or were blocked. Attempting emergency rescue via mobile client (android)...")
+        print("🚨 Standard download strategies failed or were blocked. Attempting emergency rescue via mobile clients...")
         rescue_args = {
             **(_bgutil_script and {'youtubepot-bgutilscript': {'script_path': [_bgutil_script]}} or {}),
             **(_bgutil_http and {'youtubepot-bgutilhttp': {'base_url': [_bgutil_http]}} or {}),
-            'youtube': {'player_client': ['android', 'mweb', 'web']},
+            'youtube': {'player_client': ['android', 'ios', 'mweb', 'web']},
         }
         rescue_fmt = (
             'bestvideo[vcodec^=avc1][height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
@@ -1293,24 +1288,52 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
         rescue_proxies = [None]
         if _proxy and _proxy not in rescue_proxies:
             rescue_proxies.append(_proxy)
-        for r_proxy in rescue_proxies:
+
+        rescue_cookie_path = None
+        raw_accounts = yt_account.accounts()
+        if raw_accounts:
             try:
-                print(f"📥 Emergency rescue attempt" + (" (via proxy)" if r_proxy else " (direct)"))
-                sanitized_title = _attempt(rescue_args, rescue_fmt, r_proxy, cookies=False)
+                import tempfile
+                fd, rescue_cookie_path = tempfile.mkstemp(prefix="yt_rescue_ck_", suffix=".txt")
+                with os.fdopen(fd, "w") as f:
+                    f.write(raw_accounts[0])
+            except Exception:
+                rescue_cookie_path = None
+
+        try:
+            for r_proxy in rescue_proxies:
+                cookie_attempts = [True, False] if rescue_cookie_path else [False]
+                for r_cookies in cookie_attempts:
+                    auth_label = "with cookies" if r_cookies else "anonymous"
+                    proxy_label = "via proxy" if r_proxy else "direct"
+                    try:
+                        print(f"📥 Emergency rescue attempt ({proxy_label}, {auth_label})")
+                        sanitized_title = _attempt(
+                            rescue_args, rescue_fmt, r_proxy, cookies=r_cookies,
+                            cookiefile=rescue_cookie_path if r_cookies else None
+                        )
+                        if sanitized_title is not None:
+                            print(f"✅ Emergency rescue succeeded! Video downloaded via mobile client ({auth_label}).")
+                            attempt_log.append({"label": f"rescue-mobile-{auth_label}", "ok": True,
+                                                "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
+                                                "paid": r_proxy is not None and r_proxy == _proxy})
+                            last_err = None
+                            account_limited = False
+                            break
+                    except Exception as e_rescue:
+                        print(f"⚠️ Emergency rescue attempt failed ({auth_label}): {str(e_rescue)[:200]}")
+                        attempt_log.append({"label": f"rescue-mobile-{auth_label}", "ok": False,
+                                            "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
+                                            "paid": r_proxy is not None and r_proxy == _proxy,
+                                            "error": str(e_rescue)[:300]})
                 if sanitized_title is not None:
-                    print("✅ Emergency rescue succeeded! Video downloaded via mobile client.")
-                    attempt_log.append({"label": "rescue-mobile", "ok": True,
-                                        "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
-                                        "paid": r_proxy is not None and r_proxy == _proxy})
-                    last_err = None
-                    account_limited = False
                     break
-            except Exception as e_rescue:
-                print(f"⚠️ Emergency rescue attempt failed: {str(e_rescue)[:200]}")
-                attempt_log.append({"label": "rescue-mobile", "ok": False,
-                                    "bytes": _dl_bytes["total"] + _dl_bytes["partial"],
-                                    "paid": r_proxy is not None and r_proxy == _proxy,
-                                    "error": str(e_rescue)[:300]})
+        finally:
+            if rescue_cookie_path:
+                try:
+                    os.remove(rescue_cookie_path)
+                except OSError:
+                    pass
 
     if sanitized_title is None and isinstance(route_out, dict):
         # A failed download still paid for its proxied attempts.

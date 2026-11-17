@@ -21,7 +21,7 @@ The old fallback list (``tv_embed``, ``android``) is gone from yt-dlp: the
 first is "unsupported", the second is skipped whenever cookies are present.
 """
 
-HD_CLIENTS = ["default", "mweb"]
+HD_CLIENTS = ["mweb", "web", "android", "ios"]
 
 
 class NotASingleVideo(ValueError):

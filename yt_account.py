@@ -391,7 +391,27 @@ def accounts(env=None):
             normalized = normalize_cookie_text(str(val))
             if normalized:
                 out.append(normalized)
-        return out
+        if out:
+            return out
+        # Fall back to SQLite database if env did not contain cookies
+        try:
+            import database
+            db_val = database.get_setting("youtube_cookies")
+            if db_val and db_val.strip():
+                norm = normalize_cookie_text(str(db_val))
+                if norm:
+                    out.append(norm)
+                for i in range(2, MAX_ACCOUNTS + 1):
+                    db_val_i = database.get_setting(f"youtube_cookies_{i}")
+                    if db_val_i and db_val_i.strip():
+                        norm_i = normalize_cookie_text(str(db_val_i))
+                        if norm_i:
+                            out.append(norm_i)
+                if out:
+                    return out
+        except Exception:
+            pass
+        return []
 
     # Outside pytest, prefer persistent SQLite database settings configured via UI
     if "PYTEST_CURRENT_TEST" not in os.environ:
