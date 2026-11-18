@@ -22,11 +22,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.request
+import xml.etree.ElementTree as ET
 
 from pydantic import BaseModel, Field
 
 import database
 import llm_backend
+import yt_account
 
 _MONITOR_THREAD: Optional[threading.Thread] = None
 _RENDER_WORKER_THREAD: Optional[threading.Thread] = None
@@ -98,17 +101,141 @@ def normalize_channel_url(url: str) -> Tuple[str, str]:
     return "unknown", clean
 
 
+_CHANNEL_ID_CACHE: Dict[str, str] = {}
+
+
+def resolve_youtube_channel_id(channel_url: str, timeout: float = 10.0) -> Optional[str]:
+    """Resolve a YouTube channel URL (@handle, /c/, /user/, or /channel/) to a canonical channel ID (UC...)."""
+    clean = channel_url.strip()
+    if clean.endswith("/live"):
+        clean = clean[:-5]
+    if clean.endswith("/videos"):
+        clean = clean[:-7]
+    clean = clean.rstrip("/")
+
+    # Check cache
+    if clean in _CHANNEL_ID_CACHE:
+        return _CHANNEL_ID_CACHE[clean]
+
+    # Direct UC channel ID in URL
+    m_direct = re.search(r'youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})', clean)
+    if m_direct:
+        cid = m_direct.group(1)
+        _CHANNEL_ID_CACHE[clean] = cid
+        return cid
+
+    # Otherwise fetch the channel page HTML
+    try:
+        req = urllib.request.Request(
+            clean,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            html = r.read().decode("utf-8", errors="ignore")
+
+        m = re.search(r'"channelId":"(UC[a-zA-Z0-9_-]{22})"', html) or \
+            re.search(r'href="https://www.youtube.com/channel/(UC[a-zA-Z0-9_-]{22})"', html)
+        if m:
+            cid = m.group(1)
+            _CHANNEL_ID_CACHE[clean] = cid
+            return cid
+    except Exception as e:
+        _log(f"Failed to resolve channel ID for {clean}: {e}")
+    return None
+
+
+def fetch_youtube_rss_videos(channel_id: str, timeout: float = 10.0) -> List[Dict[str, Any]]:
+    """Fetch recent videos directly from YouTube's public RSS/Atom XML feed.
+    Zero bot detection, zero yt-dlp scraping overhead.
+    """
+    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    req = urllib.request.Request(
+        rss_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+        }
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            xml_data = r.read().decode("utf-8", errors="ignore")
+        root = ET.fromstring(xml_data)
+        ns = {
+            "atom": "http://www.w3.org/2005/Atom",
+            "yt": "http://www.youtube.com/xml/schemas/2015"
+        }
+        videos = []
+        author_elem = root.find("atom:author/atom:name", ns)
+        uploader = author_elem.text if author_elem is not None else ""
+
+        for entry in root.findall("atom:entry", ns):
+            vid_elem = entry.find("yt:videoId", ns)
+            if vid_elem is None or not vid_elem.text:
+                continue
+            vid = vid_elem.text.strip()
+            title_elem = entry.find("atom:title", ns)
+            v_title = title_elem.text.strip() if title_elem is not None and title_elem.text else "New Video"
+            v_url = f"https://www.youtube.com/watch?v={vid}"
+            videos.append({
+                "id": vid,
+                "title": v_title,
+                "url": v_url,
+                "uploader": uploader,
+            })
+        return videos
+    except Exception as e:
+        _log(f"Failed to fetch RSS feed for channel {channel_id}: {e}")
+        return []
+
+
+def _build_stream_ytdlp_cmd(base_args: List[str], target_url: str, platform: str = "youtube") -> List[str]:
+    """Construct a resilient yt-dlp command with mobile clients, cookies, and proxy."""
+    cmd = [sys.executable, "-m", "yt_dlp"] + list(base_args)
+
+    if platform == "youtube" or "youtube.com" in target_url.lower() or "youtu.be" in target_url.lower():
+        cmd.extend([
+            "--extractor-args", "youtube:player_client=android,mweb,default",
+            "--user-agent", (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+        ])
+
+        try:
+            cookie_path = yt_account.get_active_cookie_file()
+            if cookie_path and os.path.isfile(cookie_path):
+                cmd.extend(["--cookies", cookie_path])
+        except Exception:
+            pass
+
+        try:
+            proxy = database.get_setting("proxy_url") or os.environ.get("PROXY_URL", "")
+            if proxy and proxy.strip():
+                cmd.extend(["--proxy", proxy.strip()])
+        except Exception:
+            pass
+
+    cmd.append(target_url)
+    return cmd
+
+
 def check_stream_live(channel_url: str, platform: str) -> Optional[Dict[str, Any]]:
     """Check if a YouTube or Twitch channel is currently live using yt-dlp."""
     try:
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
+        cmd = _build_stream_ytdlp_cmd([
             "--dump-json",
             "--no-warnings",
             "--playlist-items", "1",
             "--socket-timeout", "15",
-            channel_url,
-        ]
+        ], channel_url, platform)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if res.returncode != 0 or not res.stdout.strip():
             return None
@@ -136,12 +263,11 @@ def get_live_stream_manifest_urls(channel_url: str) -> List[str]:
     Twitch streams output a combined stream manifest.
     """
     try:
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
+        platform = "twitch" if "twitch.tv" in channel_url.lower() else "youtube"
+        cmd = _build_stream_ytdlp_cmd([
             "--no-warnings",
             "-g",
-            channel_url,
-        ]
+        ], channel_url, platform)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
         if res.returncode == 0 and res.stdout.strip():
             urls = [line.strip() for line in res.stdout.splitlines() if line.strip().startswith("http")]
@@ -1146,8 +1272,20 @@ def get_creator_streams(monitor_id: int) -> List[Dict[str, Any]]:
 
 
 def check_channel_new_videos(channel_url: str, seen_ids: List[str]) -> List[Dict[str, Any]]:
-    """Check for newly uploaded videos on a channel using yt-dlp flat playlist extraction."""
+    """Check for newly uploaded videos on a channel using RSS feed first, falling back to yt-dlp."""
     clean_url = channel_url.strip()
+    seen_set = set(seen_ids)
+
+    # 1. Try zero-overhead, bot-free YouTube RSS feed parsing first if YouTube
+    if "twitch.tv" not in clean_url.lower():
+        cid = resolve_youtube_channel_id(clean_url)
+        if cid:
+            rss_vids = fetch_youtube_rss_videos(cid)
+            if rss_vids:
+                new_videos = [v for v in rss_vids if v.get("id") and v["id"] not in seen_set]
+                return new_videos
+
+    # 2. Fallback to yt-dlp flat playlist extraction (for Twitch or when RSS is unavailable)
     if clean_url.endswith("/live"):
         clean_url = clean_url[:-5]
     clean_url = clean_url.rstrip("/")
@@ -1157,20 +1295,18 @@ def check_channel_new_videos(channel_url: str, seen_ids: List[str]) -> List[Dict
         videos_url = clean_url
 
     try:
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
+        platform = "twitch" if "twitch.tv" in clean_url.lower() else "youtube"
+        cmd = _build_stream_ytdlp_cmd([
             "--dump-json",
             "--flat-playlist",
             "--playlist-end", "5",
             "--no-warnings",
             "--socket-timeout", "15",
-            videos_url,
-        ]
+        ], videos_url, platform)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
         if res.returncode != 0 or not res.stdout.strip():
             return []
 
-        seen_set = set(seen_ids)
         new_videos = []
         for line in res.stdout.splitlines():
             line = line.strip()

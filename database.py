@@ -244,6 +244,7 @@ def _seed_settings(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         "s3_region": os.environ.get("S3_REGION") or os.environ.get("AWS_REGION", "auto"),
         "s3_connection_status": "",
         "proxy_url": os.environ.get("PROXY_URL", ""),
+        "cobalt_api_url": os.environ.get("COBALT_API_URL", ""),
     }
 
     for i in range(2, 10):

@@ -914,6 +914,65 @@ def download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                                        cap_minutes=cap_minutes, route_out=route_out)
 
 
+def _download_via_cobalt(url: str, output_dir: str):
+    """Attempt downloading via Cobalt microservice sidecar if configured."""
+    cobalt_url = os.environ.get("COBALT_API_URL", "").strip() or None
+    if not cobalt_url:
+        try:
+            import database
+            cobalt_url = (database.get_setting("cobalt_api_url") or "").strip() or None
+        except Exception:
+            cobalt_url = None
+    if not cobalt_url:
+        return None
+
+    try:
+        import urllib.request
+        import json
+        req_data = json.dumps({
+            "url": url,
+            "videoQuality": "1080",
+            "filenameStyle": "classic",
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            f"{cobalt_url.rstrip('/')}/",
+            data=req_data,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        stream_url = data.get("url")
+        if not stream_url:
+            return None
+
+        raw_fn = data.get("filename") or "cobalt_video"
+        base_fn, ext = os.path.splitext(raw_fn)
+        sanitized = sanitize_filename(base_fn or "cobalt_video")
+        out_file = os.path.join(output_dir, f"{sanitized}{ext or '.mp4'}")
+        if os.path.exists(out_file):
+            try:
+                os.remove(out_file)
+            except OSError:
+                pass
+
+        print(f"📥 Downloading video via Cobalt sidecar at {cobalt_url}...")
+        with urllib.request.urlopen(stream_url, timeout=180) as s_resp, open(out_file, "wb") as f:
+            while chunk := s_resp.read(1024 * 1024):
+                f.write(chunk)
+
+        if os.path.exists(out_file) and os.path.getsize(out_file) > 100000:
+            print(f"✅ Video downloaded successfully via Cobalt sidecar: {out_file}")
+            return out_file, sanitized
+    except Exception as e:
+        print(f"⚠️ Cobalt sidecar download failed ({e}); falling back.")
+    return None
+
+
 def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                             cap_minutes=None, route_out=None):
     """
@@ -1031,6 +1090,15 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             # entry of the list into the SAME outtmpl (the title is the
             # playlist's), paying for all of them and keeping the last.
             'noplaylist': True,
+            'http_headers': {
+                'User-Agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ),
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            },
         }
         if extractor_args:
             opts['extractor_args'] = extractor_args
@@ -1265,7 +1333,7 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                 print(f"⚠️  Download attempt '{label}' failed: {str(e)[:200]}")
                 if cookies and (yt_account.is_rate_limit(str(e)) or yt_account.is_cookie_invalid(str(e))):
                     if yt_account.is_cookie_invalid(str(e)):
-                        print("⚠️ The provided YouTube cookies appear expired, rotated, or invalid.")
+                        print("⚠️ The provided YouTube cookies appear expired or rotated on Google.")
                         if yt_session.mark_invalid():
                             print(f"🔁 Switched to backup YouTube account {yt_session.account + 1}.")
                         else:
@@ -1276,6 +1344,9 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                             print(f"🔁 Moving this video to YouTube account "
                                   f"{yt_session.account + 1}.")
                     break       # not again on this route; the next one may differ
+                elif yt_account.is_bot_blocked(str(e)):
+                    print(f"🤖 Bot challenge on route '{label}' — will attempt alternative client/rescue strategies.")
+                    break
                 retryable = '403' in str(e) or 'Forbidden' in str(e)
                 if not retryable or retry == 1:
                     break
@@ -1387,6 +1458,13 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
         print(f"YT_ACCOUNT_LIMITED {yt_account.cooling_down():.0f}", flush=True)
         if last_err is None:      # every attempt needed the account
             last_err = RuntimeError("The YouTube account is rate-limited by YouTube.")
+
+    if sanitized_title is None:
+        cobalt_res = _download_via_cobalt(url, output_dir)
+        if cobalt_res:
+            downloaded_file, sanitized_title = cobalt_res
+            print(f"✅ Video downloaded in {time.time() - step_start_time:.2f}s via Cobalt: {downloaded_file}")
+            return downloaded_file, sanitized_title
 
     if sanitized_title is None:
         import sys

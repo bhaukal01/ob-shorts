@@ -82,6 +82,7 @@ import json
 import os
 import tempfile
 import time
+from typing import Optional
 
 
 def _float_env(name, default):
@@ -133,14 +134,17 @@ _STRIKES_FILE = ".yt-account.strikes"
 _PACE_FILE = ".yt-account.pace"
 _SLOT_FILE = ".yt-account-{}.lock"
 _MARKERS = ("rate-limited by youtube", "rate limited by youtube")
-_COOKIE_INVALID_MARKERS = (
+_COOKIE_EXPIRED_MARKERS = (
     "the provided youtube account cookies are no longer valid",
     "cookies are no longer valid",
+    "login_required",
+)
+_COOKIE_INVALID_MARKERS = _COOKIE_EXPIRED_MARKERS
+_BOT_CHECK_MARKERS = (
     "sign in to confirm you’re not a bot",
     "sign in to confirm you're not a bot",
     "use --cookies-from-browser",
     "use --cookies for the authentication",
-    "login_required",
 )
 
 
@@ -151,9 +155,15 @@ def is_rate_limit(text) -> bool:
 
 
 def is_cookie_invalid(text) -> bool:
-    """Whether YouTube or yt-dlp reported that the account cookies are invalid, expired, or rotated."""
+    """Whether YouTube or yt-dlp reported that the account cookies are expired or rotated on Google."""
     t = str(text or "").lower()
-    return any(m in t for m in _COOKIE_INVALID_MARKERS)
+    return any(m in t for m in _COOKIE_EXPIRED_MARKERS)
+
+
+def is_bot_blocked(text) -> bool:
+    """Whether YouTube presented a bot challenge on this IP address (e.g. datacenter VPS detection)."""
+    t = str(text or "").lower()
+    return any(m in t for m in _BOT_CHECK_MARKERS)
 
 
 def state_dir():
@@ -513,6 +523,26 @@ def accounts(env=None):
                 pass
 
     return out
+
+
+def get_active_cookie_file() -> Optional[str]:
+    """Return path to an existing cookie file or create a cached temp file for the session."""
+    raw_accounts = accounts()
+    if not raw_accounts:
+        disk_cookie = find_cookies_path()
+        return disk_cookie if (disk_cookie and os.path.isfile(disk_cookie)) else None
+
+    cache_path = os.path.join(tempfile.gettempdir(), "clipsnipr_active_yt_cookies.txt")
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(raw_accounts[0])
+        try:
+            os.chmod(cache_path, 0o600)
+        except Exception:
+            pass
+        return cache_path
+    except Exception:
+        return None
 
 
 def _rest_state(fd):
