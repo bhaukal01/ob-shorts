@@ -123,8 +123,8 @@ ENV PYTHONUNBUFFERED=1
 ENV LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/venv/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/venv/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/opt/venv/lib/python3.11/site-packages/nvidia/cu13/lib
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 
-# Latest yt-dlp (nightly — it updates frequently) plus its helper plugin and streamlink.
-RUN pip install --upgrade --pre --no-cache-dir "yt-dlp[default]" bgutil-ytdlp-pot-provider streamlink
+# Latest yt-dlp (nightly — it updates frequently) plus its helper plugin.
+RUN pip install --upgrade --pre --no-cache-dir "yt-dlp[default]" bgutil-ytdlp-pot-provider
 
 # Copy application code
 COPY . .
