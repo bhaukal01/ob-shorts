@@ -540,6 +540,30 @@ def detect_person_yolo(frame):
                 
     return best_box
 
+
+def detect_all_persons_yolo(frame):
+    """
+    Detect all persons in frame using YOLO.
+    Returns list of [x, y, w, face_h] approximations in ORIGINAL frame coordinates.
+    """
+    small, scale = _detection_frame(frame)
+    with DETECT_LOCK:
+        yolo_instance = _get_yolo_model()
+        results = yolo_instance(small, verbose=False, classes=[0])
+
+    if not results:
+        return []
+
+    boxes_out = []
+    for result in results:
+        for box in result.boxes:
+            x1, y1, x2, y2 = [int(i * scale) for i in box.xyxy[0]]
+            w = x2 - x1
+            h = y2 - y1
+            face_h = int(h * 0.4)
+            boxes_out.append([x1, y1, w, face_h])
+    return boxes_out
+
 def create_general_frame(frame, output_width, output_height):
     """
     Creates a 'General Shot' frame: 
@@ -1943,7 +1967,7 @@ def process_video_to_vertical(input_video, final_output_video, aspect_ratio=ASPE
                                        crop_overrides=crop_overrides,
                                        watermark=watermark)
             print(f"   ⏱️ Reframe v2 total: {time.time() - t0:.1f}s")
-            return result
+            return final_output_video if os.path.exists(final_output_video) else result
         except Exception as e:
             # Only v2 honours hand-framed scenes and forced layouts. Falling
             # through to v1 would quietly return an automatically framed clip,
@@ -2138,7 +2162,7 @@ def process_video_to_vertical(input_video, final_output_video, aspect_ratio=ASPE
 
     if watermark:
         apply_watermark(final_output_video)
-    return True
+    return final_output_video if os.path.exists(final_output_video) else True
 
 # --- Transcript checkpoint (survive a redeploy without paying twice) ---------
 # A job interrupted by a container restart is re-run from its resume manifest

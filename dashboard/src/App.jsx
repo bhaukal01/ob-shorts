@@ -3861,7 +3861,7 @@ function App() {
                   {/* Shorts Content Grid or Meaningful Empty State */}
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-5 min-h-0">
                     {results && results.clips && results.clips.length > 0 ? (
-                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-10">
+                      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-5 pb-10">
                         {rankedClips.map(({ clip, index: i }) => (
                           <ResultCard
                             key={`${jobId}-${i}-${clip.video_url || ''}`}

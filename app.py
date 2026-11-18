@@ -6439,12 +6439,17 @@ def _locate_source(job_id: str):
     try:
         meta_files = glob.glob(os.path.join(OUTPUT_DIR, job_id, "*_metadata.json"))
         if meta_files:
-            with open(meta_files[0], 'r') as f:
-                name = json.load(f).get('source_video')
+            with open(meta_files[0], 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                name = data.get('source_video')
             if name:
                 candidate = os.path.join(OUTPUT_DIR, job_id, os.path.basename(name))
                 if os.path.exists(candidate):
                     return candidate
+            # If stream project, check segments directory
+            seg_candidates = sorted(glob.glob(os.path.join(OUTPUT_DIR, job_id, "segments", "seg_*.mp4")))
+            if seg_candidates:
+                return seg_candidates[0]
     except Exception:
         pass
     return None
@@ -6851,8 +6856,42 @@ async def _ensure_job_files(job_id: str, request: Request) -> bool:
     keep their own 404s for jobs that genuinely don't exist.
     """
     job_dir = os.path.join(OUTPUT_DIR, job_id)
-    if job_id in jobs and glob.glob(os.path.join(job_dir, "*_metadata.json")):
+
+    # 1. Active stream monitor in memory
+    try:
+        import stream_monitor
+        active_stream = stream_monitor.get_stream_job(job_id)
+        if active_stream:
+            jobs[job_id] = active_stream
+            return True
+    except Exception:
+        pass
+
+    # 2. Already in memory and metadata present
+    meta_files = glob.glob(os.path.join(job_dir, "*_metadata.json"))
+    if job_id in jobs and meta_files:
         return True
+
+    # 3. Present on disk in OUTPUT_DIR — restore into jobs dict
+    if meta_files:
+        try:
+            with open(meta_files[0], "r", encoding="utf-8") as f:
+                m = json.load(f)
+            shorts = m.get("shorts", [])
+            jobs[job_id] = {
+                "job_id": job_id,
+                "status": "completed",
+                "title": m.get("title") or m.get("video_title") or job_id,
+                "video_title": m.get("video_title") or m.get("title") or job_id,
+                "result": {"clips": shorts},
+                "ready_files": {os.path.basename(c.get("video_url", "")): c for c in shorts if c.get("video_url")},
+                "logs": ["Restored from local storage."],
+                "is_stream": m.get("is_stream", False),
+            }
+            return True
+        except Exception as e:
+            print(f"⚠️ Could not restore job {job_id} from local metadata: {e}")
+
     if not BILLING_ENABLED:
         return False
     try:
@@ -7575,7 +7614,13 @@ async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
     # since a re-render rebuilds from source using ONLY what it is sent, the
     # next save would silently drop every earlier adjustment.
     saved_overrides = clip.get('crop_overrides') or {}
+    candidate_raw = os.path.join(output_dir, f"{job_id}_clip_{clip_index + 1}.mp4")
     source_path = _locate_source(job_id)
+    is_direct_clip = False
+    if not source_path and os.path.exists(candidate_raw):
+        source_path = candidate_raw
+        is_direct_clip = True
+
     if not source_path:
         raise HTTPException(
             status_code=409,
@@ -7586,15 +7631,11 @@ async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
         import cv2
         import main as m
 
-        # Stable for the files the browser fetches (no accumulation), unique
-        # for the temp cut (no collision between overlapping requests).
-        # temp_ prefix keeps these editor-only artifacts out of the self-host
-        # S3 backup (it skips temp_*); stable names still avoid accumulation.
         token = str(clip_index)
         work_token = f"{clip_index}_{uuid.uuid4().hex[:8]}"
         preview_name = f"temp_preview_{clip_index}.mp4"
         preview_path = os.path.join(output_dir, preview_name)
-        work_path = _clip_scene_workfile(source_path, segments, output_dir, work_token)
+        work_path = candidate_raw if is_direct_clip else _clip_scene_workfile(source_path, segments, output_dir, work_token)
         try:
             scenes, fps = m.detect_scenes(work_path)
             fps = float(fps) or 30.0

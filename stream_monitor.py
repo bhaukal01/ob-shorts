@@ -87,6 +87,9 @@ def get_active_stream_job(job_id: str) -> Optional[Dict[str, Any]]:
         return _STREAM_ACTIVE_JOBS.get(job_id)
 
 
+get_stream_job = get_active_stream_job
+
+
 def normalize_channel_url(url: str) -> Tuple[str, str]:
     """Normalize channel URL and determine platform ('youtube' or 'twitch')."""
     clean = url.strip()
@@ -412,6 +415,13 @@ def get_or_create_stream_project(mon: Dict[str, Any], live_info: Dict[str, Any])
     except Exception:
         pass
 
+    try:
+        app_mod = sys.modules.get("app")
+        if app_mod and hasattr(app_mod, "jobs"):
+            app_mod.jobs[job_id] = _STREAM_ACTIVE_JOBS[job_id]
+    except Exception:
+        pass
+
     return job_id
 
 
@@ -731,7 +741,9 @@ def _render_single_stream_clip(
                 vertical_clip_path,
                 aspect_ratio=9/16,
             )
-            if rendered and os.path.exists(rendered) and os.path.getsize(rendered) > 0:
+            if os.path.exists(vertical_clip_path) and os.path.getsize(vertical_clip_path) > 0:
+                final_clip = vertical_clip_path
+            elif rendered and isinstance(rendered, str) and os.path.exists(rendered) and os.path.getsize(rendered) > 0:
                 final_clip = rendered
         except Exception as e:
             _append_stream_log(job_id, f"⚠️ {prefix}AI Reframing notice ({e}), preserved source framing.")

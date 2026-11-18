@@ -351,7 +351,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
             // Managed (paid) users get the Gemini key resolved server-side;
             // only BYOK/self-host needs a local key.
             if (!apiKey && !isManaged) {
-                throw new Error("Gemini API Key is missing. Please set it in Settings.");
+                throw new Error("Auto Edit requires Google Gemini for video analysis. When using custom OpenAI API, use Edit Clip, Reframing, or Subtitles, or add a Gemini key in Settings.");
             }
             const geminiHeaders = apiKey ? { 'X-Gemini-Key': apiKey } : {};
 

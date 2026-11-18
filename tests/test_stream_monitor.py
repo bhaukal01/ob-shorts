@@ -73,3 +73,29 @@ class TestStreamMonitor(unittest.TestCase):
         self.assertIn("GamerFleet", matching[0]["title"])
         self.assertEqual(matching[0]["status"], "processing")
         self.assertTrue(matching[0]["is_stream"])
+
+    def test_camera_inset_filters_cornered_faces_over_center_character(self):
+        import camera_inset
+        frame_w, frame_h = 1920, 1080
+        # In-game character in center (x=800, y=300, w=300, h=400)
+        center_face = (800, 300, 200, 200)
+        # Streamer webcam face in bottom-left corner (x=50, y=600, w=150, h=150)
+        corner_face = (50, 600, 150, 150)
+
+        self.assertFalse(camera_inset.is_cornered(center_face, frame_w, frame_h))
+        self.assertTrue(camera_inset.is_cornered(corner_face, frame_w, frame_h))
+
+    @patch("stream_monitor.get_stream_job")
+    def test_ensure_job_files_restores_stream_job(self, mock_get_stream):
+        import asyncio
+        mock_get_stream.return_value = {
+            "job_id": "stream_test_123",
+            "title": "Stream Test",
+            "status": "completed",
+            "result": {"clips": []},
+        }
+        req = MagicMock()
+        res = asyncio.run(app._ensure_job_files("stream_test_123", req))
+        self.assertTrue(res)
+        self.assertIn("stream_test_123", app.jobs)
+

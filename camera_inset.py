@@ -224,15 +224,16 @@ def detect(video_path, samples=10):
             # BlazeFace even at full resolution, while YOLO still finds the
             # person.
             faces = screencast_layout.detect_faces_full_res(frame)
-            if faces:
-                box = max(faces, key=lambda c: c['score'])['box']
+            cornered_faces = [f for f in faces if is_cornered(f['box'], frame_w, frame_h)] if faces else []
+            if cornered_faces:
+                box = max(cornered_faces, key=lambda c: c['score'])['box']
+                boxes.append(inset_box(box, frame_w, frame_h, face=True))
             else:
-                box = m.detect_person_yolo(frame)
-            if not box:
-                continue
-            if not is_cornered(box, frame_w, frame_h):
-                continue
-            boxes.append(inset_box(box, frame_w, frame_h, face=bool(faces)))
+                persons = m.detect_all_persons_yolo(frame) if hasattr(m, 'detect_all_persons_yolo') else ([m.detect_person_yolo(frame)] if m.detect_person_yolo(frame) else [])
+                cornered_persons = [b for b in persons if b and is_cornered(b, frame_w, frame_h)]
+                if cornered_persons:
+                    box = cornered_persons[0]
+                    boxes.append(inset_box(box, frame_w, frame_h, face=False))
     finally:
         cap.release()
 
@@ -324,11 +325,14 @@ def detect_in_scene(video_path, start_f, end_f, samples=5):
             if not ok:
                 continue
             faces = screencast_layout.detect_faces_full_res(frame)
-            if faces:
-                box = max(faces, key=lambda c: c['score'])['box']
+            small_faces = [f for f in faces if f['box'][3] <= frame_h * MAX_SUBJECT_HEIGHT] if faces else []
+            if small_faces:
+                box = max(small_faces, key=lambda c: c['score'])['box']
                 widen = OVERLAY_FACE_WIDTHS
             else:
-                box = m.detect_person_yolo(frame)
+                persons = m.detect_all_persons_yolo(frame) if hasattr(m, 'detect_all_persons_yolo') else ([m.detect_person_yolo(frame)] if m.detect_person_yolo(frame) else [])
+                small_persons = [b for b in persons if b and b[3] <= frame_h * MAX_SUBJECT_HEIGHT]
+                box = small_persons[0] if small_persons else None
                 widen = INSET_PADDING
             if not box or box[3] > frame_h * MAX_SUBJECT_HEIGHT:
                 continue

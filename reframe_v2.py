@@ -782,9 +782,6 @@ def render(input_video, final_output_video, aspect_ratio, content_ranges=None,
                 strategies[scene_idx] = 'GAMING_INSET'
                 insets[start_f] = inset
                 inset_count += 1
-            else:
-                strategies[scene_idx] = 'WIDE'
-                wide_count += 1
             splits.pop(start_f, None)
     elif content_ranges:
         for scene_idx, (plan, centre) in screencast_layout.detect_screencast_scenes(
@@ -960,4 +957,4 @@ def render(input_video, final_output_video, aspect_ratio, content_ranges=None,
                         [(s / fps, e / fps, strategy, bands.get(s))
                          for s, e, strategy in ranges])
     print(f"   ✅ Clip saved to {final_output_video}")
-    return True
+    return final_output_video
