@@ -515,6 +515,52 @@ class TestLongVodIngest(unittest.TestCase):
         self.assertTrue(len(progress_calls) >= 5)
         self.assertEqual(progress_calls[-1][1], 1.0)
 
+    @patch("long_vod_ingest.resolve_manifest_url")
+    @patch("long_vod_ingest.stream_and_chunk_audio")
+    @patch("long_vod_ingest.transcribe_audio_chunks")
+    @patch("long_vod_ingest.score_sliding_windows")
+    @patch("long_vod_ingest.download_sectional_video")
+    @patch("main.render_clip")
+    @patch("main.auto_caption_clip")
+    def test_main_run_marathon_pipeline(
+        self,
+        mock_caption,
+        mock_render,
+        mock_sectional,
+        mock_score,
+        mock_transcribe,
+        mock_stream_chunk,
+        mock_resolve,
+    ):
+        import main
+        mock_resolve.return_value = "https://stream.kick.com/master.m3u8"
+        mock_stream_chunk.return_value = [os.path.join(self.test_dir, "chunk_00.mp3")]
+        mock_transcribe.return_value = {
+            "language": "en",
+            "segments": [
+                {"id": 0, "start": 10.0, "end": 20.0, "text": "What a game!"}
+            ]
+        }
+        mock_score.return_value = [
+            {
+                "start": 10.0,
+                "end": 20.0,
+                "title": "GTA Clutch",
+                "hook": "Watch this!",
+                "reason": "Epic gaming moment",
+                "score": 9.0,
+            }
+        ]
+        mock_render.return_value = True
+        mock_caption.return_value = os.path.join(self.test_dir, "stream_vod_clip_1.mp4")
+
+        ok = main.run_marathon_pipeline("https://kick.com/streamer/videos/test-uuid", self.test_dir)
+        self.assertTrue(ok)
+        mock_resolve.assert_called_once()
+        mock_stream_chunk.assert_called_once()
+        mock_sectional.assert_called_once()
+        mock_render.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

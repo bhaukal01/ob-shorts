@@ -1054,70 +1054,70 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
 
                 {/* Actions Footer */}
                 <div className="mt-auto pt-3 border-t border-rule space-y-2">
-                    {/* Editor & AI Tools */}
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                    {/* Editor & AI Tools: Clean spacious horizontal toolbar */}
+                    <div className="flex flex-wrap items-center gap-2">
                         {onEditClip && (
                             <button
                                 onClick={() => onEditClip(index)}
-                                className="group flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg border border-rule bg-paper hover:bg-paper2 text-[11px] font-medium text-ink2 hover:text-ink transition-colors"
+                                className="group flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors shadow-xs"
                                 title="Trim, cut or adjust clip segments"
                             >
                                 <Scissors size={14} className="text-muted group-hover:text-brandblue transition-colors shrink-0" />
-                                <span className="truncate">Edit</span>
+                                <span className="whitespace-nowrap">Edit</span>
                             </button>
                         )}
 
                         {onReframeClip && (
                             <button
                                 onClick={() => onReframeClip(index)}
-                                className="group flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg border border-rule bg-paper hover:bg-paper2 text-[11px] font-medium text-ink2 hover:text-ink transition-colors"
+                                className="group flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors shadow-xs"
                                 title="Reframe video focus to 9:16 vertical crop"
                             >
                                 <Crosshair size={14} className="text-muted group-hover:text-brandblue transition-colors shrink-0" />
-                                <span className="truncate">Reframe</span>
+                                <span className="whitespace-nowrap">Reframe</span>
                             </button>
                         )}
 
                         <button
                             onClick={handleAutoEdit}
                             disabled={isEditing}
-                            className="group flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg border border-rule bg-paper hover:bg-paper2 text-[11px] font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40"
+                            className="group flex-1 min-w-[80px] sm:min-w-[90px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40 shadow-xs"
                             title="Apply AI zooms, jump cuts and visual pacing"
                         >
                             {isEditing ? <Loader2 size={14} className="animate-spin text-brass shrink-0" /> : <Wand2 size={14} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
-                            <span className="truncate">{isEditing ? 'Editing…' : 'Auto Edit'}</span>
+                            <span className="whitespace-nowrap">{isEditing ? 'Editing…' : 'Auto Edit'}</span>
                         </button>
 
                         <button
                             onClick={() => setShowSubtitleModal(true)}
                             disabled={isSubtitling}
-                            className="group flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg border border-rule bg-paper hover:bg-paper2 text-[11px] font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40"
+                            className="group flex-1 min-w-[75px] sm:min-w-[85px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40 shadow-xs"
                             title="Customize animated subtitles, colors and fonts"
                         >
                             {isSubtitling ? <Loader2 size={14} className="animate-spin text-brass shrink-0" /> : <Type size={14} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
-                            <span className="truncate">{isSubtitling ? 'Adding…' : 'Captions'}</span>
+                            <span className="whitespace-nowrap">{isSubtitling ? 'Adding…' : 'Captions'}</span>
                         </button>
 
                         <button
                             onClick={() => setShowHookModal(true)}
                             disabled={isHooking}
-                            className="group flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg border border-rule bg-paper hover:bg-paper2 text-[11px] font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40"
+                            className="group flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40 shadow-xs"
                             title="Edit opening hook text overlay"
                         >
                             {isHooking ? <Loader2 size={14} className="animate-spin text-brass shrink-0" /> : <Sparkles size={14} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
-                            <span className="truncate">{isHooking ? 'Saving…' : 'Hook'}</span>
+                            <span className="whitespace-nowrap">{isHooking ? 'Saving…' : 'Hook'}</span>
                         </button>
                     </div>
 
                     {/* Primary Actions: Download & Publish */}
-                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                    <div className="grid grid-cols-2 gap-3 pt-1">
                         <button
                             onClick={(e) => {
                                 e.preventDefault();
                                 downloadClip();
                             }}
                             disabled={downloadPct !== null}
-                            className="btn-ghost flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold border border-rule text-ink hover:bg-paper3 transition-colors"
+                            className="btn-ghost flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold border border-rule text-ink hover:bg-paper3 transition-colors"
                             title="Download MP4 video clip to your device"
                         >
                             {downloadPct !== null ? (
@@ -1127,19 +1127,19 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                                 </>
                             ) : (
                                 <>
-                                    <Download size={14} className="shrink-0" />
-                                    <span>Download</span>
+                                    <Download size={14} className="shrink-0 text-muted" />
+                                    <span>Download Short</span>
                                 </>
                             )}
                         </button>
 
                         <button
                             onClick={() => setShowModal(true)}
-                            className="btn-green flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold text-white shadow-xs transition-all hover:brightness-110"
+                            className="btn-green flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold text-white shadow-xs transition-all hover:brightness-110"
                             title="Publish directly to YouTube Shorts, TikTok or Instagram Reels"
                         >
                             <Share2 size={14} className="shrink-0" />
-                            <span>Publish</span>
+                            <span>Post to Socials</span>
                         </button>
                     </div>
                 </div>
