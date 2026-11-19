@@ -859,14 +859,14 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
     }, [clip]);
 
     return (
-        <div className="card overflow-hidden flex flex-col md:flex-row group border border-rule hover:border-rule2 bg-paper transition-all duration-200 animate-fade" style={{ animationDelay: `${index * 0.05}s` }}>
-            {/* Left: Video Preview — Strict 9:16 portrait container matching vertical shorts */}
-            <div className="w-full max-w-[280px] md:max-w-none mx-auto md:mx-0 md:w-[240px] lg:w-[250px] aspect-[9/16] bg-black relative shrink-0 overflow-hidden self-start rounded-t-card md:rounded-l-card md:rounded-tr-none flex items-center justify-center group/video">
+        <div className="card overflow-hidden flex flex-col md:flex-row group hover:border-rule2 transition-colors animate-fade md:min-h-[420px]" style={{ animationDelay: `${index * 0.1}s` }}>
+            {/* Left: Video Preview — 9:16 column matching the fixed card height */}
+            <div className="w-full max-w-[calc(64vh*0.5625)] md:max-w-none mx-auto md:mx-0 md:w-[236px] bg-black relative shrink-0 aspect-[9/16] md:aspect-auto group/video">
                 <video
                     ref={videoRef}
                     src={playbackUrl}
                     controls
-                    className="w-full h-full object-contain bg-black"
+                    className="w-full h-full object-contain"
                     playsInline
                     onLoadedMetadata={(e) => {
                         if (e.target.videoWidth) setResolution(`${e.target.videoWidth}×${e.target.videoHeight}`);
@@ -897,35 +897,33 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                     }}
                 />
                 
-                {/* Modern Floating Badges */}
-                <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 pointer-events-none z-10">
-                    <span className="bg-black/80 backdrop-blur-md text-white font-mono text-[11px] font-semibold px-2.5 py-1 rounded-full border border-white/10 shadow-sm flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-brandblue" />
-                        <span>Clip {index + 1}</span>
+                {/* Floating Badges */}
+                <div className="absolute top-3 left-3 flex gap-2">
+                    <span className="bg-black/70 text-ink font-mono text-micro uppercase px-2 py-1 rounded-full">
+                        Clip {index + 1}
                     </span>
-
                     {Number.isFinite(clip.predicted_score) && (
                         <span
-                            className="bg-black/80 backdrop-blur-md font-mono text-[11px] px-2.5 py-1 rounded-full border border-white/10 shadow-sm flex items-center gap-1.5"
-                            title="ClipSnipr viral score prediction (0 to 100)"
+                            className="bg-black/70 font-mono text-micro uppercase px-2 py-1 rounded-full flex items-center gap-1"
+                            title="ClipSnipr prediction of how well this clip will perform, from 0 to 100"
                         >
-                            <TrendingUp size={11} className={clip.predicted_score >= 80 ? 'text-emerald-400' : 'text-amber-400'} />
-                            <span className="text-white/70 text-[10px] uppercase font-bold tracking-wider">Viral</span>
+                            <TrendingUp size={11} className="shrink-0 text-muted" />
+                            <span className="text-muted">viral</span>
                             <b className={
-                                clip.predicted_score >= 80 ? 'text-emerald-400 font-bold'
-                                    : clip.predicted_score >= 65 ? 'text-amber-300 font-bold'
-                                        : 'text-white font-bold'
+                                clip.predicted_score >= 80 ? 'text-ok'
+                                    : clip.predicted_score >= 65 ? 'text-brass'
+                                        : 'text-ink2'
                             }>
                                 {clip.predicted_score}
                             </b>
-                            <span className="text-white/40 text-[10px]">/100</span>
+                            <span className="text-muted">/100</span>
                         </span>
                     )}
                 </div>
 
                 {/* Auto Edit Overlay if Processing */}
                 {isEditing && (
-                    <div className="absolute inset-0 bg-black/75 backdrop-blur-xs flex flex-col items-center justify-center z-10 p-4 text-center">
+                    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-10 p-4 text-center">
                         <Loader2 size={28} className="text-brass animate-spin mb-3" />
                         <span className="text-xs text-ink lowercase">ai magic in progress…</span>
                         <span className="readout mt-1.5">APPLYING VIRAL EDITS · ZOOMS</span>
@@ -934,114 +932,98 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
             </div>
 
             {/* Right: Content & Details */}
-            <div className="flex-1 p-4 md:p-5 flex flex-col overflow-hidden min-w-0 justify-between">
-                <div>
-                    <div className="mb-3">
-                        <h3 className="text-base font-bold text-ink leading-snug line-clamp-2 mb-2 break-words" title={clip.video_title_for_youtube_short}>
-                            {clip.video_title_for_youtube_short || "Viral Clip Generated"}
-                        </h3>
-                        {clip.why && (
-                            <div
-                                className="relative mb-2.5"
-                                onMouseEnter={() => setWhyOpen(true)}
-                                onMouseLeave={() => setWhyOpen(false)}
+            <div className="flex-1 p-4 md:p-5 flex flex-col overflow-hidden min-w-0">
+                <div className="mb-4">
+                    <h3 className="text-base font-medium text-ink leading-tight line-clamp-2 mb-2 break-words" title={clip.video_title_for_youtube_short}>
+                        {clip.video_title_for_youtube_short || "Viral Clip Generated"}
+                    </h3>
+                    {clip.why && (
+                        <div
+                            className="relative mb-2"
+                            onMouseEnter={() => setWhyOpen(true)}
+                            onMouseLeave={() => setWhyOpen(false)}
+                        >
+                            <p
+                                ref={whyRef}
+                                className={`text-xs text-muted leading-snug line-clamp-2 break-words ${whyClamped ? 'cursor-pointer' : ''}`}
+                                onClick={() => whyClamped && setWhyOpen(v => !v)}
+                                aria-label="why this moment was selected"
                             >
-                                <p
-                                    ref={whyRef}
-                                    className={`text-xs text-muted leading-relaxed line-clamp-2 break-words ${whyClamped ? 'cursor-pointer hover:text-ink2' : ''}`}
-                                    onClick={() => whyClamped && setWhyOpen(v => !v)}
-                                    aria-label="why this moment was selected"
+                                {clip.why}
+                            </p>
+                            {whyClamped && whyOpen && (
+                                <div
+                                    role="tooltip"
+                                    className="absolute left-0 right-0 top-full mt-1 z-20 bg-paper border border-rule rounded-input px-3 py-2 text-xs text-ink leading-snug shadow-lg"
                                 >
                                     {clip.why}
-                                </p>
-                                {whyClamped && whyOpen && (
-                                    <div
-                                        role="tooltip"
-                                        className="absolute left-0 right-0 top-full mt-1 z-20 bg-paper border border-rule rounded-input px-3 py-2 text-xs text-ink leading-snug shadow-lg"
-                                    >
-                                        {clip.why}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            {durationReadout && <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0 font-medium">{durationReadout}</span>}
-                            {resolution && <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0 font-medium">{resolution}</span>}
-                            {clipHashtags.map((tag, tIdx) => (
-                                <span key={tIdx} className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0 text-ink2 font-medium">
-                                    {tag.startsWith('#') ? tag : `#${tag}`}
-                                </span>
-                            ))}
-                            {clip.published_posts && clip.published_posts.length > 0 && (
-                                clip.published_posts.map((post, pIdx) => (
-                                    <a
-                                        key={pIdx}
-                                        href={post.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-mono font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors shrink-0"
-                                        title={`Posted to ${post.platform === 'youtube' ? 'YouTube Shorts' : 'Instagram Reels'}${post.account_name ? ` (${post.account_name})` : ''}`}
-                                    >
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                                        <span>Posted ({post.platform === 'youtube' ? 'YouTube' : 'Instagram'})</span>
-                                        <ExternalLink size={10} />
-                                    </a>
-                                ))
+                                </div>
                             )}
                         </div>
-                    </div>
-
-                    {/* Social Copy Bar (Quick Copy & Full View) */}
-                    <div className="bg-paper2/90 rounded-xl p-2.5 border border-rule/80 space-y-2 mb-3">
-                        <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-mono uppercase tracking-wider text-muted font-bold flex items-center gap-1.5">
-                                <Share2 size={11} className="text-brandblue" />
-                                <span>Social Copy & Metadata</span>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {durationReadout && <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0">{durationReadout}</span>}
+                        {resolution && <span className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0">{resolution}</span>}
+                        {clipHashtags.map((tag, tIdx) => (
+                            <span key={tIdx} className="readout bg-paper3 px-2 py-0.5 rounded-full shrink-0 text-ink2 font-medium">
+                                {tag.startsWith('#') ? tag : `#${tag}`}
                             </span>
-                            <button
-                                onClick={() => setShowDescModal(true)}
-                                className="text-[11px] font-medium text-brandblue hover:text-brandblue/80 flex items-center gap-1 transition-colors"
-                                title="View full generated captions and hashtags"
-                            >
-                                <FileText size={12} />
-                                <span>View Full Copy</span>
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                            <button
-                                onClick={() => handleCopy('youtube', clip.video_title_for_youtube_short || "Viral Short Video")}
-                                className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition-all ${
-                                    copied === 'youtube'
-                                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 font-medium'
-                                        : 'bg-paper border-rule hover:border-rule2 text-ink2 hover:text-ink'
-                                }`}
-                                title={clip.video_title_for_youtube_short || "Viral Short Video"}
-                            >
-                                <span className="flex items-center gap-1.5 truncate min-w-0 text-[11px]">
-                                    <Youtube size={13} className="text-red-400 shrink-0" />
-                                    <span className="truncate">{copied === 'youtube' ? 'Copied Title!' : 'Copy YT Title'}</span>
-                                </span>
-                                {copied === 'youtube' ? <Check size={12} className="shrink-0 text-emerald-400" /> : <Copy size={12} className="shrink-0 text-muted" />}
-                            </button>
-
-                            <button
-                                onClick={() => handleCopy('caption', clip.video_description_for_tiktok || clip.video_description_for_instagram || clip.video_title_for_youtube_short)}
-                                className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition-all ${
-                                    copied === 'caption'
-                                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 font-medium'
-                                        : 'bg-paper border-rule hover:border-rule2 text-ink2 hover:text-ink'
-                                }`}
-                                title={clip.video_description_for_tiktok || clip.video_description_for_instagram}
-                            >
-                                <span className="flex items-center gap-1.5 truncate min-w-0 text-[11px]">
-                                    <Instagram size={13} className="text-pink-400 shrink-0" />
-                                    <span className="truncate">{copied === 'caption' ? 'Copied Caption!' : 'Copy Caption'}</span>
-                                </span>
-                                {copied === 'caption' ? <Check size={12} className="shrink-0 text-emerald-400" /> : <Copy size={12} className="shrink-0 text-muted" />}
-                            </button>
-                        </div>
+                        ))}
+                        {clip.published_posts && clip.published_posts.length > 0 && (
+                            clip.published_posts.map((post, pIdx) => (
+                                <a
+                                    key={pIdx}
+                                    href={post.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-mono font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors shrink-0"
+                                    title={`Posted to ${post.platform === 'youtube' ? 'YouTube Shorts' : 'Instagram Reels'}${post.account_name ? ` (${post.account_name})` : ''}`}
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                                    <span>Posted ({post.platform === 'youtube' ? 'YouTube' : 'Instagram'})</span>
+                                    <ExternalLink size={10} />
+                                </a>
+                            ))
+                        )}
                     </div>
+                </div>
+
+                {/* Descriptions (compact) — full text lives in the modal */}
+                <div className="flex-1 min-h-0 space-y-2 mb-4">
+                    <div className="bg-paper rounded-input px-3 py-2 border border-rule flex items-center gap-2 min-w-0 overflow-hidden">
+                        <span className="eyebrow shrink-0">YOUTUBE</span>
+                        <p className="text-xs text-ink2 truncate flex-1 min-w-0">
+                            {clip.video_title_for_youtube_short || "Viral Short Video"}
+                        </p>
+                        <button
+                            onClick={() => handleCopy('youtube', clip.video_title_for_youtube_short || "Viral Short Video")}
+                            aria-label="copy youtube title"
+                            className="p-1 rounded-full text-muted hover:text-brass transition-colors shrink-0"
+                        >
+                            {copied === 'youtube' ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
+                        </button>
+                    </div>
+
+                    <div className="bg-paper rounded-input px-3 py-2 border border-rule flex items-center gap-2 min-w-0 overflow-hidden">
+                        <span className="eyebrow shrink-0">TIKTOK · IG</span>
+                        <p className="text-xs text-ink2 truncate flex-1 min-w-0">
+                            {clip.video_description_for_tiktok || clip.video_description_for_instagram}
+                        </p>
+                        <button
+                            onClick={() => handleCopy('caption', clip.video_description_for_tiktok || clip.video_description_for_instagram)}
+                            aria-label="copy caption"
+                            className="p-1 rounded-full text-muted hover:text-brass transition-colors shrink-0"
+                        >
+                            {copied === 'caption' ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={() => setShowDescModal(true)}
+                        className="w-full flex items-center justify-center gap-2 py-2 rounded-input border border-dashed border-rule text-xs lowercase text-muted hover:text-brass hover:border-rule2 transition-colors"
+                    >
+                        <FileText size={14} /> view descriptions
+                    </button>
                 </div>
 
                 {/* Error Message */}
@@ -1053,95 +1035,70 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                 )}
 
                 {/* Actions Footer */}
-                <div className="mt-auto pt-3 border-t border-rule space-y-2">
-                    {/* Editor & AI Tools: Clean spacious horizontal toolbar */}
-                    <div className="flex flex-wrap items-center gap-2">
-                        {onEditClip && (
-                            <button
-                                onClick={() => onEditClip(index)}
-                                className="group flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors shadow-xs"
-                                title="Trim, cut or adjust clip segments"
-                            >
-                                <Scissors size={14} className="text-muted group-hover:text-brandblue transition-colors shrink-0" />
-                                <span className="whitespace-nowrap">Edit</span>
-                            </button>
-                        )}
-
-                        {onReframeClip && (
-                            <button
-                                onClick={() => onReframeClip(index)}
-                                className="group flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors shadow-xs"
-                                title="Reframe video focus to 9:16 vertical crop"
-                            >
-                                <Crosshair size={14} className="text-muted group-hover:text-brandblue transition-colors shrink-0" />
-                                <span className="whitespace-nowrap">Reframe</span>
-                            </button>
-                        )}
-
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2 mt-auto pt-4 border-t border-rule">
+                    {onEditClip && (
                         <button
-                            onClick={handleAutoEdit}
-                            disabled={isEditing}
-                            className="group flex-1 min-w-[80px] sm:min-w-[90px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40 shadow-xs"
-                            title="Apply AI zooms, jump cuts and visual pacing"
+                            onClick={() => onEditClip(index)}
+                            className={QUIET_BTN}
                         >
-                            {isEditing ? <Loader2 size={14} className="animate-spin text-brass shrink-0" /> : <Wand2 size={14} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
-                            <span className="whitespace-nowrap">{isEditing ? 'Editing…' : 'Auto Edit'}</span>
+                            <Scissors size={16} className="text-muted group-hover:text-brass transition-colors shrink-0" />
+                            edit clip
                         </button>
+                    )}
 
+                    {onReframeClip && (
                         <button
-                            onClick={() => setShowSubtitleModal(true)}
-                            disabled={isSubtitling}
-                            className="group flex-1 min-w-[75px] sm:min-w-[85px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40 shadow-xs"
-                            title="Customize animated subtitles, colors and fonts"
+                            onClick={() => onReframeClip(index)}
+                            className={QUIET_BTN}
                         >
-                            {isSubtitling ? <Loader2 size={14} className="animate-spin text-brass shrink-0" /> : <Type size={14} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
-                            <span className="whitespace-nowrap">{isSubtitling ? 'Adding…' : 'Captions'}</span>
+                            <Crosshair size={16} className="text-muted group-hover:text-brass transition-colors shrink-0" />
+                            reframing
                         </button>
+                    )}
 
-                        <button
-                            onClick={() => setShowHookModal(true)}
-                            disabled={isHooking}
-                            className="group flex-1 min-w-[70px] sm:min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg border border-rule bg-paper hover:bg-paper2 text-xs font-medium text-ink2 hover:text-ink transition-colors disabled:opacity-40 shadow-xs"
-                            title="Edit opening hook text overlay"
-                        >
-                            {isHooking ? <Loader2 size={14} className="animate-spin text-brass shrink-0" /> : <Sparkles size={14} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
-                            <span className="whitespace-nowrap">{isHooking ? 'Saving…' : 'Hook'}</span>
-                        </button>
-                    </div>
+                    <button
+                        onClick={handleAutoEdit}
+                        disabled={isEditing}
+                        className={QUIET_BTN}
+                    >
+                        {isEditing ? <Loader2 size={16} className="animate-spin text-brass shrink-0" /> : <Wand2 size={16} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
+                        {isEditing ? 'editing…' : 'auto edit'}
+                    </button>
 
-                    {/* Primary Actions: Download & Publish */}
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                        <button
-                            onClick={(e) => {
-                                e.preventDefault();
-                                downloadClip();
-                            }}
-                            disabled={downloadPct !== null}
-                            className="btn-ghost flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold border border-rule text-ink hover:bg-paper3 transition-colors"
-                            title="Download MP4 video clip to your device"
-                        >
-                            {downloadPct !== null ? (
-                                <>
-                                    <Loader2 size={14} className="animate-spin text-brandblue shrink-0" />
-                                    <span>{downloadPct}%</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Download size={14} className="shrink-0 text-muted" />
-                                    <span>Download Short</span>
-                                </>
-                            )}
-                        </button>
+                    <button
+                        onClick={() => setShowSubtitleModal(true)}
+                        disabled={isSubtitling}
+                        className={QUIET_BTN}
+                    >
+                        {isSubtitling ? <Loader2 size={16} className="animate-spin text-brass shrink-0" /> : <Type size={16} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
+                        {isSubtitling ? 'adding…' : 'subtitles'}
+                    </button>
 
-                        <button
-                            onClick={() => setShowModal(true)}
-                            className="btn-green flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold text-white shadow-xs transition-all hover:brightness-110"
-                            title="Publish directly to YouTube Shorts, TikTok or Instagram Reels"
-                        >
-                            <Share2 size={14} className="shrink-0" />
-                            <span>Post to Socials</span>
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => setShowHookModal(true)}
+                        disabled={isHooking}
+                        className={QUIET_BTN}
+                    >
+                        {isHooking ? <Loader2 size={16} className="animate-spin text-brass shrink-0" /> : <Wand2 size={16} className="text-muted group-hover:text-brass transition-colors shrink-0" />}
+                        {isHooking ? 'saving…' : 'edit hook'}
+                    </button>
+
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="btn-green flex-col gap-1 py-2.5 sm:py-2 px-1 text-[11px] leading-none rounded-input whitespace-nowrap text-white font-bold"
+                    >
+                        <Share2 size={16} className="shrink-0" /> post
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.preventDefault();
+                            downloadClip();
+                        }}
+                        className={`${QUIET_BTN}${onEditClip ? ' col-span-2' : ''}`}
+                    >
+                        <Download size={16} className="text-muted group-hover:text-brass transition-colors shrink-0" />
+                        {downloadPct === null ? 'download' : `downloading ${downloadPct}%`}
+                    </button>
                 </div>
             </div>
 
