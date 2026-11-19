@@ -6396,7 +6396,7 @@ def _presented_status(job_id, job):
 async def get_status(job_id: str, request: Request):
     job_path = os.path.join(OUTPUT_DIR, job_id)
     if not os.path.exists(job_path) and os.path.exists(OUTPUT_DIR):
-        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if d.startswith(job_id) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
+        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if (d.startswith(job_id) or job_id.startswith(d)) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
         if prefix_matches:
             job_id = prefix_matches[0]
             job_path = os.path.join(OUTPUT_DIR, job_id)
