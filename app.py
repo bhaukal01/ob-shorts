@@ -215,8 +215,15 @@ async def resolve_gemini(request: Request) -> Optional[str]:
             return managed_keys.gemini_key()
         return None
     header = request.headers.get("X-Gemini-Key")
-    if header:
-        return header
+    if header and header.strip():
+        return header.strip()
+    try:
+        import database
+        db_key = database.get_setting("gemini_api_key")
+        if db_key and db_key.strip():
+            return db_key.strip()
+    except Exception:
+        pass
     return os.environ.get("GEMINI_API_KEY")
 
 
@@ -6392,29 +6399,53 @@ def _presented_status(job_id, job):
     return job['status']
 
 
-@app.get("/api/status/{job_id}")
-async def get_status(job_id: str, request: Request):
+def _resolve_job_entry(job_id: str) -> tuple[Optional[str], Optional[dict]]:
+    """Resolves a job_id (including prefix matches like stream_1) to its canonical
+    job ID and job dictionary. Checks in-memory jobs, stream_monitor, and disk."""
+    if not job_id:
+        return None, None
+
+    resolved_id = job_id
     job_path = os.path.join(OUTPUT_DIR, job_id)
     if not os.path.exists(job_path) and os.path.exists(OUTPUT_DIR):
-        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if (d.startswith(job_id) or job_id.startswith(d)) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
-        if prefix_matches:
-            job_id = prefix_matches[0]
-            job_path = os.path.join(OUTPUT_DIR, job_id)
+        try:
+            prefix_matches = [
+                d for d in os.listdir(OUTPUT_DIR)
+                if (d.startswith(job_id) or job_id.startswith(d)) and os.path.isdir(os.path.join(OUTPUT_DIR, d))
+            ]
+            if prefix_matches:
+                resolved_id = prefix_matches[0]
+                job_path = os.path.join(OUTPUT_DIR, resolved_id)
+        except Exception:
+            pass
 
     if os.path.exists(os.path.join(job_path, ".deleted")):
-        raise HTTPException(status_code=404, detail="Job not found")
+        return None, None
 
-    job = jobs.get(job_id)
+    job = jobs.get(resolved_id) or jobs.get(job_id)
     if job is None:
         try:
             import stream_monitor
-            job = stream_monitor.get_active_stream_job(job_id)
+            job = stream_monitor.get_active_stream_job(resolved_id) or stream_monitor.get_active_stream_job(job_id)
+            if job:
+                jobs[resolved_id] = job
         except Exception:
             pass
     if job is None:
-        job = _job_view_from_disk(job_id)
-    if job is None:
+        job = _job_view_from_disk(resolved_id) or _job_view_from_disk(job_id)
+        if job:
+            jobs[resolved_id] = job
+            jobs[job_id] = job
+
+    return (resolved_id, job) if job else (None, None)
+
+
+@app.get("/api/status/{job_id}")
+async def get_status(job_id: str, request: Request):
+    resolved_id, job = _resolve_job_entry(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    job_id = resolved_id
 
     await _assert_job_owner(request, job)
     _logs_view = _visible_logs_timed(job['logs'])
@@ -6957,8 +6988,9 @@ async def edit_clip(
     # header). Self-host keeps BYOK — the body key wins there.
     body_key = None if BILLING_ENABLED else req.api_key
     final_api_key = body_key or await resolve_gemini(request)
+    has_openai = bool(llm_backend.api_key()) or bool(llm_backend.base_url()) or llm_backend.provider() == "openai"
     use_custom_llm = not final_api_key and not BILLING_ENABLED and (
-        llm_backend.active() or llm_backend.provider() == "openai" or bool(llm_backend.base_url())
+        llm_backend.active() or has_openai
     )
 
     if not final_api_key and not use_custom_llm:
@@ -6968,10 +7000,10 @@ async def edit_clip(
         )
 
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    job = jobs[req.job_id]
+    req.job_id = resolved_id
     await _assert_job_owner(request, job)
     if 'result' not in job or 'clips' not in job['result']:
         raise HTTPException(status_code=400, detail="Job result not available")
@@ -7193,10 +7225,12 @@ class SubtitleRequest(BaseModel):
 async def get_clip_transcript(job_id: str, clip_index: int, request: Request):
     """Return word-level captions for a specific clip, formatted for Remotion."""
     await _ensure_job_files(job_id, request)
-    if job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    job_id = resolved_id
 
-    await _assert_job_owner(request, jobs[job_id])
+    await _assert_job_owner(request, job)
     output_dir = os.path.join(OUTPUT_DIR, job_id)
     json_files = glob.glob(os.path.join(output_dir, "*_metadata.json"))
 
@@ -7312,9 +7346,10 @@ async def get_clip_edl(job_id: str, clip_index: int, request: Request):
     word timeline around them, and whether the source is still available for
     cuts outside the original range."""
     await _ensure_job_files(job_id, request)
-    if job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[job_id]
+    job_id = resolved_id
     await _assert_job_owner(request, job)
 
     resolved_job_id = job.get("job_id", job_id)
@@ -7440,9 +7475,10 @@ async def rerender_clip(req: RerenderRequest, request: Request):
     """
     await require_managed_entitlement(request)
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[req.job_id]
+    req.job_id = resolved_id
     await _assert_job_owner(request, job)
 
     # Serialize rerenders per job: concurrent saves (easy for an MCP agent to
@@ -7656,9 +7692,10 @@ async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
     # source, runs scene detection and encodes a preview — real compute.
     await require_managed_entitlement(request)
     await _ensure_job_files(job_id, request)
-    if job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[job_id]
+    job_id = resolved_id
     await _assert_job_owner(request, job)
     # An hourly editor budget of its own: each call cuts the clip from
     # source, runs scene detection and encodes a preview.
@@ -7837,9 +7874,10 @@ async def reframe_clip(req: ReframeRequest, request: Request):
     """
     await require_managed_entitlement(request)
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[req.job_id]
+    req.job_id = resolved_id
     await _assert_job_owner(request, job)
 
     def _fraction(v):
@@ -8084,8 +8122,9 @@ async def generate_effects_config(
 ):
     """Generate structured EffectsConfig JSON for Remotion rendering via Gemini AI."""
     final_api_key = await resolve_gemini(request)
+    has_openai = bool(llm_backend.api_key()) or bool(llm_backend.base_url()) or llm_backend.provider() == "openai"
     use_custom_llm = not final_api_key and not BILLING_ENABLED and (
-        llm_backend.active() or llm_backend.provider() == "openai" or bool(llm_backend.base_url())
+        llm_backend.active() or has_openai
     )
 
     if not final_api_key and not use_custom_llm:
@@ -8095,10 +8134,10 @@ async def generate_effects_config(
         )
 
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    job = jobs[req.job_id]
+    req.job_id = resolved_id
     await _assert_job_owner(request, job)
     if 'result' not in job or 'clips' not in job['result']:
         raise HTTPException(status_code=400, detail="Job result not available")
@@ -8224,11 +8263,10 @@ async def add_subtitles(req: SubtitleRequest, request: Request):
                                      if k not in req.model_fields_set})
     await require_managed_entitlement(request)
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    # Reload job data from disk just in case metadata was updated
-    job = jobs[req.job_id]
+    req.job_id = resolved_id
     await _assert_job_owner(request, job)
 
     # We need to access metadata.json to get the transcript
@@ -8479,9 +8517,10 @@ async def remove_subtitles(req: RemoveSubtitlesRequest, request: Request):
     """
     await require_managed_entitlement(request)
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[req.job_id]
+    req.job_id = resolved_id
     await _assert_job_owner(request, job)
     _check_editor_rate(await _owner_id(request))
 
@@ -8544,10 +8583,10 @@ class HookRequest(BaseModel):
 async def add_hook(req: HookRequest, request: Request):
     await require_managed_entitlement(request)
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    job = jobs[req.job_id]
+    req.job_id = resolved_id
     await _assert_job_owner(request, job)
     output_dir = os.path.join(OUTPUT_DIR, req.job_id)
     json_files = glob.glob(os.path.join(output_dir, "*_metadata.json"))
@@ -8778,8 +8817,10 @@ async def _check_social_post_rate(request):
 @app.post("/api/social/post")
 async def post_to_socials(req: SocialPostRequest, request: Request):
     await _ensure_job_files(req.job_id, request)
-    if req.job_id not in jobs:
+    resolved_id, job = _resolve_job_entry(req.job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    req.job_id = resolved_id
 
     # Resolve the Upload-Post key + profile. For managed users the server key is
     # used and their own profile is forced (body api_key / user_id are ignored).
@@ -8787,8 +8828,6 @@ async def post_to_socials(req: SocialPostRequest, request: Request):
     if not upload_key:
         raise HTTPException(status_code=400, detail="Missing Upload-Post API key")
     post_user = resolve_post_profile(forced_profile, req.user_id)
-
-    job = jobs[req.job_id]
     await _assert_job_owner(request, job)
     if 'result' not in job or 'clips' not in job['result']:
         raise HTTPException(status_code=400, detail="Job result not available")

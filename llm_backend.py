@@ -47,7 +47,7 @@ def provider() -> str:
             return "openai"
         if explicit == "gemini":
             return "gemini"
-    return "openai" if base_url() else "gemini"
+    return "openai" if (base_url() or api_key()) else "gemini"
 
 
 def base_url() -> str:
@@ -56,12 +56,17 @@ def base_url() -> str:
         if db_val is not None and db_val.strip():
             return db_val.strip().rstrip("/")
     env = os.environ.get("LLM_BASE_URL")
-    if env is not None:
+    if env is not None and env.strip():
         return env.strip().rstrip("/")
     if "PYTEST_CURRENT_TEST" in os.environ:
         return ""
     db_val = database.get_setting("llm_base_url")
-    return (db_val or "").strip().rstrip("/")
+    if db_val and db_val.strip():
+        return db_val.strip().rstrip("/")
+    # Default to standard OpenAI v1 endpoint if api_key is configured
+    if api_key():
+        return "https://api.openai.com/v1"
+    return ""
 
 
 def api_key() -> str:
@@ -104,7 +109,7 @@ def active() -> bool:
             layout_picker.SHADOW = False
         except Exception:
             pass
-    return is_openai and bool(base_url())
+    return is_openai and bool(base_url() or api_key())
 
 
 def describe() -> Optional[dict]:
