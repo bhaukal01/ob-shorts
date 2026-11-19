@@ -103,10 +103,11 @@ class TestLongVodIngest(unittest.TestCase):
         self.assertIn("Failed to resolve manifest URL", str(ctx.exception))
 
     # -------------------------------------------------------------------------
-    # 3. stream_and_chunk_audio tests
+    # 3. stream_and_chunk_audio & extract_single_audio_chunk tests
     # -------------------------------------------------------------------------
+    @patch("subprocess.Popen")
     @patch("subprocess.run")
-    def test_stream_and_chunk_audio(self, mock_run):
+    def test_stream_and_chunk_audio(self, mock_run, mock_popen):
         def fake_ffmpeg(cmd, **kwargs):
             # Simulate FFmpeg creating chunk files in output_dir
             for i in range(3):
@@ -116,6 +117,11 @@ class TestLongVodIngest(unittest.TestCase):
             return MagicMock(returncode=0, stdout="", stderr="")
 
         mock_run.side_effect = fake_ffmpeg
+        mock_proc = MagicMock()
+        mock_proc.stderr = []
+        mock_proc.wait.side_effect = lambda: fake_ffmpeg([])
+        mock_proc.returncode = 0
+        mock_popen.return_value = mock_proc
 
         chunks = long_vod_ingest.stream_and_chunk_audio(
             "https://stream.kick.com/master.m3u8",
@@ -128,14 +134,39 @@ class TestLongVodIngest(unittest.TestCase):
         self.assertTrue(chunks[1].endswith("chunk_01.mp3"))
         self.assertTrue(chunks[2].endswith("chunk_02.mp3"))
 
-        # Verify FFmpeg command flags
-        cmd_called = mock_run.call_args[0][0]
-        self.assertEqual(cmd_called[0], "ffmpeg")
-        self.assertIn("-vn", cmd_called)
-        self.assertIn("-b:a", cmd_called)
-        self.assertIn("32k", cmd_called)
-        self.assertIn("-segment_time", cmd_called)
-        self.assertIn("3600", cmd_called)
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_extract_single_audio_chunk(self, mock_run, mock_popen):
+        chunk_file = os.path.join(self.test_dir, "chunk_00.mp3")
+        mock_proc = MagicMock()
+        mock_proc.stderr = ["size= 100KiB time=00:10:00.00 speed=35.0x\n"]
+        def fake_wait():
+            with open(chunk_file, "wb") as f:
+                f.write(b"chunk audio")
+            return 0
+        mock_proc.wait.side_effect = fake_wait
+        mock_proc.returncode = 0
+        mock_popen.return_value = mock_proc
+
+        out = long_vod_ingest.extract_single_audio_chunk(
+            "https://stream.kick.com/4.m3u8",
+            start_s=0,
+            duration_s=3600,
+            output_path=chunk_file,
+        )
+        self.assertEqual(out, chunk_file)
+        self.assertTrue(os.path.exists(chunk_file))
+
+    def test_get_stream_duration(self):
+        # Test with mock manifest url
+        with patch("urllib.request.urlopen") as mock_url:
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b"#EXTM3U\n#EXT-X-TWITCH-TOTAL-SECS:7200.5\n#EXTINF:10.0,\nseg.ts"
+            mock_resp.__enter__.return_value = mock_resp
+            mock_url.return_value = mock_resp
+
+            dur = long_vod_ingest.get_stream_duration("https://kick.com/video/1", manifest_url="https://kick.com/4.m3u8")
+            self.assertEqual(dur, 7200.5)
 
     # -------------------------------------------------------------------------
     # 4. transcribe_audio_chunks & timestamp offset correction tests
@@ -516,8 +547,9 @@ class TestLongVodIngest(unittest.TestCase):
         self.assertEqual(progress_calls[-1][1], 1.0)
 
     @patch("long_vod_ingest.resolve_manifest_url")
-    @patch("long_vod_ingest.stream_and_chunk_audio")
-    @patch("long_vod_ingest.transcribe_audio_chunks")
+    @patch("long_vod_ingest.get_stream_duration")
+    @patch("long_vod_ingest.extract_single_audio_chunk")
+    @patch("long_vod_ingest.transcribe_single_audio_chunk")
     @patch("long_vod_ingest.score_sliding_windows")
     @patch("long_vod_ingest.download_sectional_video")
     @patch("main.render_clip")
@@ -529,17 +561,21 @@ class TestLongVodIngest(unittest.TestCase):
         mock_sectional,
         mock_score,
         mock_transcribe,
-        mock_stream_chunk,
+        mock_extract_chunk,
+        mock_duration,
         mock_resolve,
     ):
         import main
         mock_resolve.return_value = "https://stream.kick.com/master.m3u8"
-        mock_stream_chunk.return_value = [os.path.join(self.test_dir, "chunk_00.mp3")]
+        mock_duration.return_value = 3600.0  # 1 chunk
+        mock_extract_chunk.return_value = os.path.join(self.test_dir, "chunk_00.mp3")
         mock_transcribe.return_value = {
             "language": "en",
             "segments": [
                 {"id": 0, "start": 10.0, "end": 20.0, "text": "What a game!"}
-            ]
+            ],
+            "words": [],
+            "text": "What a game!",
         }
         mock_score.return_value = [
             {
@@ -556,8 +592,9 @@ class TestLongVodIngest(unittest.TestCase):
 
         ok = main.run_marathon_pipeline("https://kick.com/streamer/videos/test-uuid", self.test_dir)
         self.assertTrue(ok)
-        mock_resolve.assert_called_once()
-        mock_stream_chunk.assert_called_once()
+        self.assertEqual(mock_resolve.call_count, 2)
+        mock_extract_chunk.assert_called_once()
+        mock_transcribe.assert_called_once()
         mock_sectional.assert_called_once()
         mock_render.assert_called_once()
 

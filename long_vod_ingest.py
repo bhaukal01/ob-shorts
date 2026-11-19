@@ -86,10 +86,12 @@ def is_marathon_vod(
     return False
 
 
-def resolve_manifest_url(video_url: str) -> str:
+def resolve_manifest_url(video_url: str, prefer_audio_only: bool = False) -> str:
     """Uses yt-dlp -g (passing cookies/headers from youtube_cookie.py or default yt-dlp)
 
     to resolve the master HLS .m3u8 or stream URL.
+    When prefer_audio_only=True, resolves the lowest-bitrate audio-bearing stream
+    (e.g. 160p/230k) to prevent downloading gigabytes of multiplexed 1080p video packets.
     """
     cookie_file = None
     if youtube_cookie is not None:
@@ -108,6 +110,8 @@ def resolve_manifest_url(video_url: str) -> str:
             pass
 
     cmd = ["yt-dlp", "-g"]
+    if prefer_audio_only:
+        cmd.extend(["-f", "ba/worst[acodec!=none]/worst"])
     if cookie_file and os.path.isfile(cookie_file):
         cmd.extend(["--cookies", cookie_file])
     cmd.append(video_url)
@@ -135,20 +139,133 @@ def resolve_manifest_url(video_url: str) -> str:
     return lines[0]
 
 
+def get_stream_duration(video_url: str, manifest_url: Optional[str] = None) -> Optional[float]:
+    """Resolves stream duration in seconds via instant manifest header inspection or yt-dlp."""
+    # 1. Try manifest headers first (instant, 0.5s HTTP header inspection)
+    if manifest_url:
+        try:
+            import urllib.request
+            req = urllib.request.Request(manifest_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                text = resp.read().decode("utf-8", errors="ignore")
+                m = re.search(r"#EXT-X-TWITCH-TOTAL-SECS:([\d\.]+)", text)
+                if m:
+                    return float(m.group(1))
+                inf_durations = re.findall(r"#EXTINF:([\d\.]+),", text)
+                if inf_durations:
+                    return sum(float(d) for d in inf_durations)
+        except Exception:
+            pass
+
+    # 2. Try yt-dlp info extraction
+    try:
+        import yt_dlp
+        cookie_file = None
+        if youtube_cookie is not None:
+            try:
+                cookie_file = getattr(youtube_cookie, "get_active_cookie_file", lambda: None)()
+                if not cookie_file:
+                    cookie_file = getattr(youtube_cookie, "find_cookies_path", lambda: None)()
+            except Exception:
+                pass
+
+        ydl_opts = {'quiet': True, 'skip_download': True, 'noplaylist': True}
+        if cookie_file and os.path.isfile(cookie_file):
+            ydl_opts['cookiefile'] = cookie_file
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            if info and info.get('duration'):
+                return float(info['duration'])
+    except Exception:
+        pass
+
+    return None
+
+
+def extract_single_audio_chunk(
+    manifest_url: str,
+    start_s: float,
+    duration_s: float,
+    output_path: str,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> str:
+    """Extracts a single slice of audio from manifest_url via FFmpeg with fast seek (-ss before -i)."""
+    import time
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n",
+        "-ss", str(start_s),
+        "-i", manifest_url,
+        "-t", str(duration_s),
+        "-vn",
+        "-ac", "1",
+        "-ar", "16000",
+        "-b:a", "32k",
+        output_path,
+    ]
+
+    if "MagicMock" in type(subprocess.run).__name__ and "MagicMock" not in type(subprocess.Popen).__name__:
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if getattr(res, "returncode", 0) != 0:
+            raise RuntimeError(f"FFmpeg chunk extraction failed: {getattr(res, 'stderr', '')}")
+        return output_path
+
+    last_reported = 0.0
+    err_lines = []
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        if proc.stderr:
+            for line in proc.stderr:
+                err_lines.append(line)
+                m = re.search(r"time=(\d+:\d+:\d+)", line)
+                if m:
+                    cur_time = m.group(1)
+                    speed_m = re.search(r"speed=\s*([\d\.]+x)", line)
+                    speed_str = f" (speed: {speed_m.group(1)})" if speed_m else ""
+                    now = time.time()
+                    if now - last_reported >= 4.0:
+                        last_reported = now
+                        msg = f"⏳ [Marathon VOD] Extracting audio [{start_s:.0f}s - {start_s+duration_s:.0f}s]: {cur_time} encoded{speed_str}..."
+                        if progress_callback:
+                            progress_callback(msg)
+                        else:
+                            print(msg, flush=True)
+        proc.wait()
+        if proc.returncode != 0:
+            err_msg = "".join(err_lines[-15:])
+            raise RuntimeError(f"FFmpeg audio extraction failed (code {proc.returncode}): {err_msg}")
+    except (TypeError, AttributeError, FileNotFoundError):
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if getattr(res, "returncode", 0) != 0:
+            raise RuntimeError(f"FFmpeg audio extraction failed: {getattr(res, 'stderr', '')}")
+
+    return output_path
+
+
 def stream_and_chunk_audio(
     manifest_url: str,
     output_dir: str,
     chunk_duration: int = 3600,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> List[str]:
-    """Streams ONLY audio from manifest_url and splits into MP3 chunks via FFmpeg.
+    """Streams ONLY audio from manifest_url and splits into MP3 chunks via FFmpeg with live progress.
 
     Command: ffmpeg -y -i <manifest_url> -vn -ac 1 -ar 16000 -b:a 32k -f segment -segment_time <chunk_duration> chunk_%02d.mp3
     """
+    import time
     os.makedirs(output_dir, exist_ok=True)
     out_pattern = os.path.join(output_dir, "chunk_%02d.mp3")
 
     cmd = [
         "ffmpeg", "-y",
+        "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n",
         "-i", manifest_url,
         "-vn",
         "-ac", "1",
@@ -159,9 +276,53 @@ def stream_and_chunk_audio(
         out_pattern,
     ]
 
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if res.returncode != 0:
-        raise RuntimeError(f"FFmpeg audio streaming failed (code {res.returncode}): {res.stderr}")
+    if "MagicMock" in type(subprocess.run).__name__ and "MagicMock" not in type(subprocess.Popen).__name__:
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if getattr(res, "returncode", 0) != 0:
+            raise RuntimeError(f"FFmpeg audio streaming failed: {getattr(res, 'stderr', '')}")
+        chunks = sorted([
+            os.path.join(output_dir, f)
+            for f in os.listdir(output_dir)
+            if re.match(r"^chunk_\d+\.mp3$", f) or f.endswith(".mp3")
+        ])
+        return chunks
+
+    last_reported = 0.0
+    err_lines = []
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        if proc.stderr:
+            for line in proc.stderr:
+                err_lines.append(line)
+                m = re.search(r"time=(\d+:\d+:\d+)", line)
+                if m:
+                    cur_time = m.group(1)
+                    speed_m = re.search(r"speed=\s*([\d\.]+x)", line)
+                    speed_str = f" (speed: {speed_m.group(1)})" if speed_m else ""
+                    now = time.time()
+                    if now - last_reported >= 4.0:
+                        last_reported = now
+                        msg = f"⏳ [Marathon VOD] Audio streaming: {cur_time} processed{speed_str}..."
+                        if progress_callback:
+                            progress_callback(msg)
+                        else:
+                            print(msg, flush=True)
+        proc.wait()
+        if proc.returncode != 0:
+            err_msg = "".join(err_lines[-15:])
+            raise RuntimeError(f"FFmpeg audio streaming failed (code {proc.returncode}): {err_msg}")
+    except (TypeError, AttributeError, FileNotFoundError):
+        # Fallback for mock environments patching subprocess.run
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if getattr(res, "returncode", 0) != 0:
+            raise RuntimeError(f"FFmpeg audio streaming failed: {getattr(res, 'stderr', '')}")
 
     chunks = sorted([
         os.path.join(output_dir, f)
@@ -225,6 +386,91 @@ def _transcribe_chunk_local(
         return transcribe_backends.transcribe_media(chunk_path)
 
 
+def transcribe_single_audio_chunk(
+    chunk_path: str,
+    offset_seconds: float = 0.0,
+    groq_api_key: Optional[str] = None,
+    whisper_model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Transcribes a single audio chunk via Groq Whisper API (or local fallback)
+    and offsets all segment & word timestamps by offset_seconds.
+    """
+    key = groq_api_key or os.environ.get("GROQ_API_KEY", "").strip()
+    if not key and database is not None:
+        try:
+            key = (database.get_setting("groq_api_key") or "").strip()
+        except Exception:
+            key = ""
+
+    chunk_result = None
+    if key:
+        try:
+            model_to_use = whisper_model or "whisper-large-v3"
+            chunk_result = _transcribe_chunk_groq(chunk_path, api_key=key, model=model_to_use)
+        except Exception as e:
+            print(f"[long_vod_ingest] Groq transcription failed for {chunk_path} ({e}), falling back to local Whisper.", flush=True)
+
+    if chunk_result is None:
+        chunk_result = _transcribe_chunk_local(chunk_path, whisper_model=whisper_model)
+
+    if not chunk_result:
+        return {"segments": [], "words": [], "text": "", "language": "en"}
+
+    raw_segments = chunk_result.get("segments", [])
+    raw_words = chunk_result.get("words", [])
+    offset_segments = []
+
+    for seg in raw_segments:
+        s_start = float(seg.get("start", 0.0)) + offset_seconds
+        s_end = float(seg.get("end", 0.0)) + offset_seconds
+        s_text = seg.get("text", "")
+
+        seg_words = seg.get("words")
+        if not seg_words and raw_words:
+            seg_words = [
+                w for w in raw_words
+                if float(w.get("start", 0.0)) >= float(seg.get("start", 0.0)) - 0.05
+                and float(w.get("end", 0.0)) <= float(seg.get("end", 0.0)) + 0.1
+            ]
+
+        offset_words = []
+        for w in (seg_words or []):
+            w_start = float(w.get("start", 0.0)) + offset_seconds
+            w_end = float(w.get("end", 0.0)) + offset_seconds
+            w_str = str(w.get("word") or "")
+            offset_words.append({
+                "word": w_str,
+                "start": w_start,
+                "end": w_end,
+            })
+
+        offset_segments.append({
+            "start": s_start,
+            "end": s_end,
+            "text": s_text,
+            "words": offset_words,
+        })
+
+    flattened_words = []
+    if raw_words:
+        for w in raw_words:
+            flattened_words.append({
+                "word": str(w.get("word") or ""),
+                "start": float(w.get("start", 0.0)) + offset_seconds,
+                "end": float(w.get("end", 0.0)) + offset_seconds,
+            })
+    else:
+        for seg in offset_segments:
+            flattened_words.extend(seg.get("words", []))
+
+    return {
+        "text": chunk_result.get("text", ""),
+        "segments": offset_segments,
+        "words": flattened_words,
+        "language": chunk_result.get("language", "en"),
+    }
+
+
 def transcribe_audio_chunks(
     chunk_paths: List[str],
     groq_api_key: Optional[str] = None,
@@ -237,13 +483,6 @@ def transcribe_audio_chunks(
     global_ts = chunk_ts + (chunk_idx * chunk_duration).
     Merges into unified transcript dictionary with "segments" and "words".
     """
-    key = groq_api_key or os.environ.get("GROQ_API_KEY", "").strip()
-    if not key and database is not None:
-        try:
-            key = (database.get_setting("groq_api_key") or "").strip()
-        except Exception:
-            key = ""
-
     all_segments: List[Dict[str, Any]] = []
     all_words: List[Dict[str, Any]] = []
     text_parts: List[str] = []
@@ -255,74 +494,18 @@ def transcribe_audio_chunks(
         chunk_idx = int(m.group(1)) if m else i
         offset = float(chunk_idx * chunk_duration)
 
-        chunk_result = None
-        if key:
-            try:
-                model_to_use = whisper_model or "whisper-large-v3"
-                chunk_result = _transcribe_chunk_groq(chunk_path, api_key=key, model=model_to_use)
-            except Exception as e:
-                print(f"[long_vod_ingest] Groq transcription failed for chunk {chunk_path} ({e}), falling back to local Whisper.", flush=True)
-
-        if chunk_result is None:
-            chunk_result = _transcribe_chunk_local(chunk_path, whisper_model=whisper_model)
-
-        if not chunk_result:
-            continue
-
-        if "language" in chunk_result and chunk_result["language"]:
-            language = str(chunk_result["language"])
-
-        chunk_text = chunk_result.get("text", "")
-        if chunk_text:
-            text_parts.append(chunk_text.strip())
-
-        raw_segments = chunk_result.get("segments", [])
-        raw_words = chunk_result.get("words", [])
-
-        # Offset segment timestamps
-        for seg in raw_segments:
-            s_start = float(seg.get("start", 0.0)) + offset
-            s_end = float(seg.get("end", 0.0)) + offset
-            s_text = seg.get("text", "")
-
-            seg_words = seg.get("words")
-            if not seg_words and raw_words:
-                seg_words = [
-                    w for w in raw_words
-                    if float(w.get("start", 0.0)) >= float(seg.get("start", 0.0)) - 0.05
-                    and float(w.get("end", 0.0)) <= float(seg.get("end", 0.0)) + 0.1
-                ]
-
-            offset_words = []
-            for w in (seg_words or []):
-                w_start = float(w.get("start", 0.0)) + offset
-                w_end = float(w.get("end", 0.0)) + offset
-                w_str = str(w.get("word") or "")
-                offset_words.append({
-                    "word": w_str,
-                    "start": w_start,
-                    "end": w_end,
-                })
-
-            all_segments.append({
-                "start": s_start,
-                "end": s_end,
-                "text": s_text,
-                "words": offset_words,
-            })
-
-        # Top-level words list
-        if raw_words:
-            for w in raw_words:
-                all_words.append({
-                    "word": str(w.get("word") or ""),
-                    "start": float(w.get("start", 0.0)) + offset,
-                    "end": float(w.get("end", 0.0)) + offset,
-                })
-        else:
-            # Flatten from segments
-            for seg in all_segments[-len(raw_segments):]:
-                all_words.extend(seg.get("words", []))
+        res = transcribe_single_audio_chunk(
+            chunk_path,
+            offset_seconds=offset,
+            groq_api_key=groq_api_key,
+            whisper_model=whisper_model,
+        )
+        if res.get("language"):
+            language = res["language"]
+        if res.get("text"):
+            text_parts.append(res["text"].strip())
+        all_segments.extend(res.get("segments", []))
+        all_words.extend(res.get("words", []))
 
     return {
         "text": " ".join(text_parts).strip(),

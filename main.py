@@ -3877,21 +3877,29 @@ async def delete_project_endpoint(job_id: str):
 def run_marathon_pipeline(video_url: str, output_dir: str, output_format: str = "auto") -> bool:
     """Zero-waste streaming ingestion for marathon VODs and livestreams (Kick, Twitch, YouTube).
 
-    Streams audio directly into 60-minute MP3 segments, transcribes in parallel/succession,
-    finds viral moments with LLM sliding windows, and downloads ONLY the targeted 30-60s
-    sectional video slices directly from the HLS CDN without downloading the multi-GB source.
+    Executes a 4-stage FIFO Producer-Consumer concurrent pipeline:
+    - Stage 1: Fast-extracts 60m audio slices from the lightweight 160p stream.
+    - Stage 2: Immediately transcribes each slice via Groq Whisper in a worker thread.
+    - Stage 3: Immediately passes new transcript to LLM to find peak viral moments.
+    - Stage 4: Immediately downloads 1080p clip slices, reframes to 9:16 vertical,
+               adds captions, emits CLIP_READY, and updates metadata live!
     """
+    import queue
+    import threading
     import long_vod_ingest
     import yt_dlp
     import niche_tags
     import layout_ranges as _layouts
     import s3_uploader
 
-    print(f"\n⚡ [Marathon VOD] Starting zero-waste stream ingestion for {video_url}...", flush=True)
+    print(f"\n⚡ [Marathon VOD] Starting concurrent FIFO stream ingestion for {video_url}...", flush=True)
 
-    # 1. Resolve manifest and stream title
-    manifest_url = long_vod_ingest.resolve_manifest_url(video_url)
-    print(f"📡 [Marathon VOD] Resolved HLS stream manifest: {manifest_url[:80]}...", flush=True)
+    # 1. Resolve manifests: lightweight stream (160p) for audio streaming,
+    # and master stream (1080p60) for cutting the final short clips.
+    audio_manifest_url = long_vod_ingest.resolve_manifest_url(video_url, prefer_audio_only=True)
+    video_manifest_url = long_vod_ingest.resolve_manifest_url(video_url, prefer_audio_only=False)
+    print(f"📡 [Marathon VOD] Resolved lightweight audio stream: {audio_manifest_url[:80]}...", flush=True)
+    print(f"📡 [Marathon VOD] Resolved 1080p video stream: {video_manifest_url[:80]}...", flush=True)
 
     video_title = "stream_vod"
     try:
@@ -3908,43 +3916,6 @@ def run_marathon_pipeline(video_url: str, output_dir: str, output_format: str = 
     except Exception:
         pass
 
-    # 2. Stream audio track only into 60m MP3 chunks
-    audio_dir = os.path.join(output_dir, "audio_chunks")
-    print(f"🎧 [Marathon VOD] Streaming audio track into 60m chunks (no video download)...", flush=True)
-    chunk_paths = long_vod_ingest.stream_and_chunk_audio(manifest_url, audio_dir, chunk_duration=3600)
-    if not chunk_paths:
-        raise RuntimeError("No audio chunks produced from manifest stream.")
-    print(f"✅ [Marathon VOD] Captured {len(chunk_paths)} audio chunk(s).", flush=True)
-
-    # 3. Transcribe audio chunks
-    groq_key = os.environ.get("GROQ_API_KEY")
-    if not groq_key and database:
-        try:
-            groq_key = database.get_setting("groq_api_key") or None
-        except Exception:
-            groq_key = None
-    groq_model = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3")
-    print(f"🎙️ [Marathon VOD] Transcribing audio with {'Groq Cloud Whisper' if groq_key else 'Local Whisper'}...", flush=True)
-    transcript = long_vod_ingest.transcribe_audio_chunks(chunk_paths, groq_api_key=groq_key, model=groq_model)
-    if not transcript or not transcript.get("segments"):
-        raise RuntimeError("Failed to transcribe audio chunks.")
-    print(f"✅ [Marathon VOD] Transcript ready: {len(transcript['segments'])} segments.", flush=True)
-
-    # 4. Find viral moments via LLM sliding windows
-    target_clips = int(os.environ.get("CLIP_TARGET_MAX", "5"))
-    llm_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("LLM_API_KEY")
-    if not llm_key and database:
-        try:
-            llm_key = database.get_setting("gemini_api_key") or database.get_setting("llm_api_key") or None
-        except Exception:
-            llm_key = None
-    print(f"🧠 [Marathon VOD] Scoring sliding windows for peak viral moments...", flush=True)
-    moments = long_vod_ingest.score_sliding_windows(transcript, llm_key=llm_key, target_clips=target_clips)
-    if not moments:
-        print("⚠️ No moments found via sliding windows, using heuristic fallback.", flush=True)
-        moments = long_vod_ingest._heuristic_viral_moment(transcript["segments"], target_clips=target_clips)
-    print(f"🔥 [Marathon VOD] Found {len(moments)} viral moment(s)!", flush=True)
-
     # Layout detection (gaming layout if title or env indicates gaming)
     is_gaming = "gaming" in os.environ.get("LAYOUT", "").lower() or any(
         w in video_title.lower() for w in ("gta", "game", "gaming", "play", "walkthrough", "stream", "live", "villa", "rackathon")
@@ -3953,122 +3924,296 @@ def run_marathon_pipeline(video_url: str, output_dir: str, output_format: str = 
         os.environ["GAMING_LAYOUT"] = "1"
         print("🎮 [Marathon VOD] Enabling GAMING split layout for streamer facecam & gameplay.", flush=True)
 
-    shorts = []
-    for i, m in enumerate(moments):
-        c_title = m.get("title") or f"{video_title} Highlight #{i+1}"
-        score_val = float(m.get("score") or 8.0)
-        pred_score = int(round(score_val * 10)) if score_val <= 10 else int(round(score_val))
-        tags = niche_tags.generate_niche_hashtags(
-            video_title=video_title,
-            clip_title=c_title,
-            transcript=m.get("reason", ""),
-            limit=7,
-        )
-        shorts.append({
-            "start": m["start"],
-            "end": m["end"],
-            "video_title_for_youtube_short": c_title,
-            "viral_hook_text": m.get("hook") or "Must Watch!",
-            "why": m.get("reason") or "Peak highlight from stream.",
-            "predicted_score": pred_score,
-            "video_description_for_youtube": f"{c_title}\n\n{' '.join(tags)}",
-            "video_description_for_tiktok": f"{c_title} {' '.join(tags)}",
-            "video_description_for_instagram": f"{c_title}\n.\n.\n{' '.join(tags)}",
-            "tags": tags,
-        })
-
     sub_script = os.environ.get("SUBTITLE_SCRIPT", "auto").strip().lower()
     meta_script = os.environ.get("METADATA_SCRIPT", "auto").strip().lower()
-    if sub_script == "hinglish" or meta_script == "hinglish":
+
+    # Determine duration and total chunks
+    total_duration = long_vod_ingest.get_stream_duration(video_url, manifest_url=audio_manifest_url)
+    if not total_duration or total_duration <= 0:
+        total_duration = 3600.0  # Fallback: at least 1 hour chunk
+    
+    chunk_duration = 3600.0
+    total_chunks = max(1, math.ceil(total_duration / chunk_duration))
+    print(f"📊 [Marathon VOD] Stream duration: {total_duration/3600:.2f}h ({total_duration:.0f}s) divided into {total_chunks} 60m chunk(s).", flush=True)
+
+    # API keys
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if not groq_key and database:
         try:
-            import hindi_transliterator
-            if transcript is not None:
-                transcript = hindi_transliterator.transliterate_transcript(transcript)
-                print("🔤 Transliterated transcript to Hinglish.", flush=True)
-        except Exception as e:
-            print(f"   ⚠️ Hinglish transliteration failed: {e}")
+            groq_key = database.get_setting("groq_api_key") or None
+        except Exception:
+            groq_key = None
+    groq_model = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3")
 
-    for s in shorts:
-        s["subtitle_script"] = sub_script
+    llm_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("LLM_API_KEY")
+    if not llm_key and database:
+        try:
+            llm_key = database.get_setting("gemini_api_key") or database.get_setting("llm_api_key") or None
+        except Exception:
+            llm_key = None
 
-    clips_data = {
-        "title": video_title,
-        "shorts": shorts,
-        "transcript": transcript,
-        "source_video": f"{video_title}_stream.mp4",
-        "output_format": output_format,
-        "subtitle_script": sub_script,
-        "metadata_script": meta_script,
-    }
+    target_per_chunk = max(1, int(os.environ.get("CLIP_TARGET_PER_CHUNK", "2")))
+
+    # Shared thread-safe state
+    audio_dir = os.path.join(output_dir, "audio_chunks")
+    os.makedirs(audio_dir, exist_ok=True)
     metadata_file = os.path.join(output_dir, f"{video_title}_metadata.json")
-    write_json_atomic(metadata_file, clips_data, indent=2)
 
-    # Download only sectional video and render each clip
-    for i, clip in enumerate(shorts):
-        start = clip["start"]
-        end = clip["end"]
-        clip_filename = f"{video_title}_clip_{i+1}.mp4"
-        clip_temp_path = os.path.join(output_dir, f"temp_{clip_filename}")
-        clip_final_path = os.path.join(output_dir, clip_filename)
+    accumulated_transcript = {"segments": [], "words": [], "text": "", "language": "en"}
+    transcript_lock = threading.RLock()
+    shorts = []
+    shorts_lock = threading.RLock()
 
-        print(f"\n🎬 [Marathon VOD] Processing Clip {i+1}/{len(shorts)} [{start:.1f}s - {end:.1f}s]: {clip['video_title_for_youtube_short']}", flush=True)
-        long_vod_ingest.download_sectional_video(manifest_url, start, end, clip_temp_path)
+    def persist_metadata():
+        with shorts_lock:
+            clips_data = {
+                "title": video_title,
+                "shorts": list(shorts),
+                "transcript": accumulated_transcript,
+                "source_video": f"{video_title}_stream.mp4",
+                "output_format": output_format,
+                "subtitle_script": sub_script,
+                "metadata_script": meta_script,
+            }
+            write_json_atomic(metadata_file, clips_data, indent=2)
 
-        success = render_clip(clip_temp_path, clip_final_path, output_format)
-        deliver_path = clip_final_path
+    persist_metadata()
 
-        clip['layout_ranges'] = _layouts.read(clip_final_path)
-        split_ranges = _layouts.split_ranges(clip['layout_ranges'])
+    # FIFO Communication Queues
+    transcription_queue = queue.Queue(maxsize=3)
+    scoring_queue = queue.Queue(maxsize=6)
+    rendering_queue = queue.Queue(maxsize=15)
 
-        captioned = None
-        if success and os.environ.get("AUTO_HOOK") == "1":
-            plan = None
-            if (clip.get('viral_hook_text') or '').strip():
-                plan = auto_caption_clip(clip_final_path, transcript, start, end,
-                                         split_ranges=split_ranges, plan_only=True)
-            hooked = auto_hook_clip(clip_final_path, clip, captions=plan,
-                                    mark=os.environ.get("WATERMARK") == "1")
-            if hooked:
-                deliver_path, clip['auto_hook'] = hooked
-                captioned = clip['auto_hook'].pop("_captioned", None)
-
-        if success:
-            if not captioned:
-                captioned = auto_caption_clip(
-                    deliver_path, transcript, start, end,
-                    split_ranges=split_ranges,
-                    mark=os.environ.get("WATERMARK") == "1"
-                )
-            served = captioned or deliver_path
-            if os.environ.get("WATERMARK") == "1":
-                served = mark_delivery(served)
-
-            print(f"   ✅ [Marathon VOD] Clip {i+1} ready: {clip_final_path}", flush=True)
-            print(f"CLIP_READY {i} {os.path.basename(served)}", flush=True)
-            clip['video_url'] = f"/videos/{os.path.basename(output_dir)}/{os.path.basename(served)}"
-            clip['filename'] = os.path.basename(served)
-
-            if s3_uploader.is_s3_enabled():
-                try:
-                    s3_key = f"{os.path.basename(output_dir)}/{os.path.basename(served)}"
-                    threading.Thread(
-                        target=s3_uploader.upload_file_to_s3,
-                        args=(served, s3_uploader.get_s3_bucket(), s3_key),
-                        daemon=True
-                    ).start()
-                    clip['s3_key'] = s3_key
-                except Exception as e:
-                    print(f"   ⚠️ S3 background upload error: {e}")
-
-        if os.path.exists(clip_temp_path):
+    # -------------------------------------------------------------
+    # Stage 4 Worker: Video Ingest & Render Thread
+    # -------------------------------------------------------------
+    def render_worker():
+        while True:
+            item = rendering_queue.get()
+            if item is None:
+                rendering_queue.task_done()
+                break
             try:
-                os.remove(clip_temp_path)
-            except OSError:
-                pass
+                clip_idx = item["clip_index"]
+                clip = item["clip_dict"]
+                start = clip["start"]
+                end = clip["end"]
+                clip_filename = f"{video_title}_clip_{clip_idx+1}.mp4"
+                clip_temp_path = os.path.join(output_dir, f"temp_{clip_filename}")
+                clip_final_path = os.path.join(output_dir, clip_filename)
 
-        write_json_atomic(metadata_file, clips_data, indent=2)
+                print(f"\n🎬 [Marathon VOD] Processing Clip #{clip_idx+1} [{start:.1f}s - {end:.1f}s]: {clip['video_title_for_youtube_short']}", flush=True)
+                print(f"📥 [Marathon VOD] Downloading 1080p clip #{clip_idx+1} ({end - start:.1f}s slice)...", flush=True)
+                long_vod_ingest.download_sectional_video(video_manifest_url, start, end, clip_temp_path)
+                print(f"📐 [Marathon VOD] Reframing clip #{clip_idx+1} into 9:16 vertical...", flush=True)
 
-    print(f"\n🎉 [Marathon VOD] Ingestion complete! Generated {len(shorts)} shorts without downloading full video.", flush=True)
+                success = render_clip(clip_temp_path, clip_final_path, output_format)
+                deliver_path = clip_final_path
+
+                clip['layout_ranges'] = _layouts.read(clip_final_path)
+                split_ranges = _layouts.split_ranges(clip['layout_ranges'])
+
+                captioned = None
+                with transcript_lock:
+                    current_tx = dict(accumulated_transcript)
+
+                if success and os.environ.get("AUTO_HOOK") == "1":
+                    plan = None
+                    if (clip.get('viral_hook_text') or '').strip():
+                        plan = auto_caption_clip(clip_final_path, current_tx, start, end,
+                                                 split_ranges=split_ranges, plan_only=True)
+                    hooked = auto_hook_clip(clip_final_path, clip, captions=plan,
+                                            mark=os.environ.get("WATERMARK") == "1")
+                    if hooked:
+                        deliver_path, clip['auto_hook'] = hooked
+                        captioned = clip['auto_hook'].pop("_captioned", None)
+
+                if success:
+                    if not captioned:
+                        captioned = auto_caption_clip(
+                            deliver_path, current_tx, start, end,
+                            split_ranges=split_ranges,
+                            mark=os.environ.get("WATERMARK") == "1"
+                        )
+                    served = captioned or deliver_path
+                    if os.environ.get("WATERMARK") == "1":
+                        served = mark_delivery(served)
+
+                    clip['video_url'] = f"/videos/{os.path.basename(output_dir)}/{os.path.basename(served)}"
+                    clip['filename'] = os.path.basename(served)
+                    persist_metadata()
+
+                    print(f"   ✅ [Marathon VOD] Clip #{clip_idx+1} ready: {clip_final_path}", flush=True)
+                    print(f"CLIP_READY {clip_idx} {os.path.basename(served)}", flush=True)
+
+                    if s3_uploader.is_s3_enabled():
+                        try:
+                            s3_key = f"{os.path.basename(output_dir)}/{os.path.basename(served)}"
+                            threading.Thread(
+                                target=s3_uploader.upload_file_to_s3,
+                                args=(served, s3_uploader.get_s3_bucket(), s3_key),
+                                daemon=True
+                            ).start()
+                            clip['s3_key'] = s3_key
+                            persist_metadata()
+                        except Exception as e:
+                            print(f"   ⚠️ S3 background upload error: {e}", flush=True)
+
+                if os.path.exists(clip_temp_path):
+                    try:
+                        os.remove(clip_temp_path)
+                    except OSError:
+                        pass
+            except Exception as e:
+                print(f"❌ [Marathon VOD] Render worker error on clip #{item.get('clip_index', '?')}: {e}", flush=True)
+            finally:
+                rendering_queue.task_done()
+
+    # -------------------------------------------------------------
+    # Stage 3 Worker: LLM Viral Moment Finder Thread
+    # -------------------------------------------------------------
+    def scoring_worker():
+        while True:
+            item = scoring_queue.get()
+            if item is None:
+                rendering_queue.put(None)
+                scoring_queue.task_done()
+                break
+            try:
+                chunk_idx = item["chunk_idx"]
+                chunk_tx = item["transcript"]
+                if chunk_tx and chunk_tx.get("segments"):
+                    print(f"🧠 [Marathon VOD] Finding viral moments in Chunk #{chunk_idx+1} via LLM...", flush=True)
+                    moments = long_vod_ingest.score_sliding_windows(chunk_tx, llm_key=llm_key, target_clips=target_per_chunk)
+                    if not moments:
+                        moments = long_vod_ingest._heuristic_viral_moment(chunk_tx["segments"], target_clips=target_per_chunk)
+                    
+                    print(f"🔥 [Marathon VOD] Found {len(moments)} viral moment(s) in Chunk #{chunk_idx+1}!", flush=True)
+
+                    for m in moments:
+                        score_val = float(m.get("score") or 8.0)
+                        pred_score = int(round(score_val * 10)) if score_val <= 10 else int(round(score_val))
+                        with shorts_lock:
+                            clip_idx = len(shorts)
+                            c_title = m.get("title") or f"{video_title} Highlight #{clip_idx+1}"
+                            tags = niche_tags.generate_niche_hashtags(
+                                video_title=video_title,
+                                clip_title=c_title,
+                                transcript=m.get("reason", ""),
+                                limit=7,
+                            )
+                            clip_dict = {
+                                "start": m["start"],
+                                "end": m["end"],
+                                "video_title_for_youtube_short": c_title,
+                                "viral_hook_text": m.get("hook") or "Must Watch!",
+                                "why": m.get("reason") or "Peak highlight from stream.",
+                                "predicted_score": pred_score,
+                                "video_description_for_youtube": f"{c_title}\n\n{' '.join(tags)}",
+                                "video_description_for_tiktok": f"{c_title} {' '.join(tags)}",
+                                "video_description_for_instagram": f"{c_title}\n.\n.\n{' '.join(tags)}",
+                                "tags": tags,
+                                "subtitle_script": sub_script,
+                            }
+                            shorts.append(clip_dict)
+                            persist_metadata()
+
+                        rendering_queue.put({
+                            "clip_index": clip_idx,
+                            "clip_dict": clip_dict,
+                            "moment": m,
+                        })
+            except Exception as e:
+                print(f"❌ [Marathon VOD] Scoring worker error on chunk #{item.get('chunk_idx', '?')}: {e}", flush=True)
+            finally:
+                scoring_queue.task_done()
+
+    # -------------------------------------------------------------
+    # Stage 2 Worker: Transcription Worker Thread
+    # -------------------------------------------------------------
+    def transcription_worker():
+        while True:
+            item = transcription_queue.get()
+            if item is None:
+                scoring_queue.put(None)
+                transcription_queue.task_done()
+                break
+            try:
+                chunk_idx = item["chunk_idx"]
+                chunk_path = item["chunk_path"]
+                start_s = item["start_s"]
+                print(f"🎙️ [Marathon VOD] Transcribing Chunk #{chunk_idx+1}/{total_chunks} [{start_s:.0f}s - {start_s+item['duration_s']:.0f}s] with {'Groq Cloud' if groq_key else 'Local Whisper'}...", flush=True)
+
+                tx = long_vod_ingest.transcribe_single_audio_chunk(
+                    chunk_path,
+                    offset_seconds=start_s,
+                    groq_api_key=groq_key,
+                    whisper_model=groq_model,
+                )
+
+                if sub_script == "hinglish" or meta_script == "hinglish":
+                    try:
+                        import hindi_transliterator
+                        tx = hindi_transliterator.transliterate_transcript(tx)
+                    except Exception as e:
+                        print(f"   ⚠️ Hinglish transliteration failed: {e}", flush=True)
+
+                with transcript_lock:
+                    accumulated_transcript["segments"].extend(tx.get("segments", []))
+                    accumulated_transcript["words"].extend(tx.get("words", []))
+                    if tx.get("text"):
+                        prev_text = accumulated_transcript["text"]
+                        accumulated_transcript["text"] = f"{prev_text} {tx['text']}".strip()
+                    if tx.get("language"):
+                        accumulated_transcript["language"] = tx["language"]
+
+                persist_metadata()
+                scoring_queue.put({"chunk_idx": chunk_idx, "transcript": tx})
+            except Exception as e:
+                print(f"❌ [Marathon VOD] Transcription worker error on chunk #{item.get('chunk_idx', '?')}: {e}", flush=True)
+            finally:
+                transcription_queue.task_done()
+
+    # Start all background workers
+    t_thread = threading.Thread(target=transcription_worker, daemon=True)
+    s_thread = threading.Thread(target=scoring_worker, daemon=True)
+    r_thread = threading.Thread(target=render_worker, daemon=True)
+
+    t_thread.start()
+    s_thread.start()
+    r_thread.start()
+
+    # -------------------------------------------------------------
+    # Stage 1: Audio Chunk Extractor (Main Thread)
+    # -------------------------------------------------------------
+    try:
+        for chunk_idx in range(total_chunks):
+            start_s = chunk_idx * chunk_duration
+            dur_s = min(chunk_duration, total_duration - start_s)
+            chunk_path = os.path.join(audio_dir, f"chunk_{chunk_idx:02d}.mp3")
+
+            print(f"\n🎧 [Marathon VOD] Extracting audio chunk #{chunk_idx+1}/{total_chunks} [{start_s:.0f}s - {start_s+dur_s:.0f}s]...", flush=True)
+            long_vod_ingest.extract_single_audio_chunk(audio_manifest_url, start_s, dur_s, chunk_path)
+
+            # Immediately dispatch to transcription worker
+            transcription_queue.put({
+                "chunk_idx": chunk_idx,
+                "chunk_path": chunk_path,
+                "start_s": start_s,
+                "duration_s": dur_s,
+            })
+
+    except Exception as e:
+        print(f"❌ [Marathon VOD] Audio extraction error: {e}", flush=True)
+    finally:
+        # Cascade completion signal across all workers
+        transcription_queue.put(None)
+        t_thread.join()
+        s_thread.join()
+        r_thread.join()
+
+    persist_metadata()
+    print(f"\n🎉 [Marathon VOD] Ingestion complete! Generated {len(shorts)} shorts concurrently.", flush=True)
     return True
 
 
