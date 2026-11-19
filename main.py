@@ -1169,12 +1169,19 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
                 pass
             break
 
+    class _SilentYTDLLogger:
+        def debug(self, msg): pass
+        def info(self, msg): pass
+        def warning(self, msg): pass
+        def error(self, msg): pass
+
     def _early_audio(info, extractor_args, proxy, cookies):
         """Fetch the audio track alone and hand it to on_audio (background)."""
         try:
             opts = {
                 **_base_opts(extractor_args, proxy, cookies),
                 'quiet': True, 'verbose': False, 'noprogress': True,
+                'logger': _SilentYTDLLogger(),
                 'format': 'bestaudio[ext=m4a]/bestaudio',
                 'outtmpl': os.path.join(output_dir, '.early_audio.%(ext)s'),
                 'overwrites': True,
@@ -1229,8 +1236,15 @@ def _download_youtube_video(url, output_dir=".", on_audio=None, allow_paid=True,
             ranged = not _dur or float(_dur) > max(3 * _range_cap, _range_cap + 2700)
         # Once per download, and not on the per-GB proxy (that is paid bytes,
         # and it is the last resort anyway). Not for a ranged download either:
-        # the early audio would be the whole source.
-        if (on_audio and not _early["started"] and info.get('formats') and not ranged
+        # the early audio would be the whole source. Only start early audio if
+        # the media actually has a separate audio track (e.g. YouTube format 140/251).
+        # Multiplexed streams like Kick or Twitch VODs contain no separate audio stream.
+        has_audio_only = any(
+            (f.get('vcodec') in (None, 'none') or f.get('resolution') == 'audio only')
+            and f.get('acodec') not in (None, 'none')
+            for f in (info.get('formats') or [])
+        )
+        if (on_audio and not _early["started"] and has_audio_only and not ranged
                 and not (_proxy and proxy == _proxy)):
             _early["started"] = True
             try:
@@ -2371,7 +2385,7 @@ def score_batch_size():
     return 3 if llm_backend.active() else 8
 
 
-def get_viral_clips(transcript_result, video_duration, viewer_clips=None):
+def get_viral_clips(transcript_result, video_duration, viewer_clips=None, video_title=""):
     """Two-pass clip selection: score transcript windows, then detail the best.
 
     Windowing gives even coverage on long videos (a single call over the whole
@@ -2481,6 +2495,7 @@ def get_viral_clips(transcript_result, video_duration, viewer_clips=None):
             def build(ws):
                 return gemini_worker.DETAIL_PROMPT_TEMPLATE.format(
                     video_duration=video_duration, language=language,
+                    video_title=video_title or "Source Video",
                     min_clips=lo, max_clips=hi,
                     min_secs=min_secs, max_secs=max_secs,
                     metadata_instructions=gemini_worker.get_metadata_instructions(language),
@@ -2548,6 +2563,14 @@ def get_viral_clips(transcript_result, video_duration, viewer_clips=None):
                             s[field] = hindi_transliterator.transliterate_text(val)
             except Exception as e:
                 print(f"   ⚠️ Hinglish transliteration on metadata failed: {e}")
+
+        # Enrich each clip with specific game, creator and niche hashtags based on video title & content
+        try:
+            import niche_tags
+            for s in shorts:
+                niche_tags.enrich_clip_metadata(s, video_title)
+        except Exception as e:
+            print(f"   ⚠️ Niche hashtag enrichment failed: {e}")
 
         # Aggregate cost across both passes.
         cost_analysis = None
@@ -4187,7 +4210,7 @@ if __name__ == '__main__':
             print("♻️ Using the clips Gemini picked while the video downloaded.", flush=True)
             clips_data = early_clips
         elif transcript is not None:
-            clips_data = get_viral_clips(transcript, duration, viewer_clips=viewer_clips)
+            clips_data = get_viral_clips(transcript, duration, viewer_clips=viewer_clips, video_title=video_title)
         else:
             clips_data = get_visual_clips(input_video, duration, viewer_clips=viewer_clips)
 

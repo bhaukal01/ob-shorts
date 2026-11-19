@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film, Scissors, Flame, Cookie, Info } from 'lucide-react';
+import { Upload, Sparkles, Youtube, Instagram, Share2, ChevronDown, Check, Activity, LayoutDashboard, Settings, Plus, History, X, Terminal, Shield, LayoutGrid, Image, Globe, RotateCcw, Calendar, AlertTriangle, KeyRound, Bot, Users, Smartphone, ExternalLink, Copy, CheckCircle2, Mail, Loader2, Download, Menu, Lock, Rocket, RefreshCw, AlertCircle, Cpu, Server, Eye, EyeOff, Radio, Mic, Zap, HardDrive, Trash2, Sun, Moon, Monitor, Film, Scissors, Flame, Cookie, Info, PanelLeftClose, PanelLeft } from 'lucide-react';
 import KeyInput from './components/KeyInput';
 import MediaInput from './components/MediaInput';
 import ResultCard from './components/ResultCard';
@@ -658,6 +658,7 @@ function App() {
   // When each server log line arrived (epoch s, parallel to logs), from /api/status.
   const [logTimes, setLogTimes] = useState([]);
   const [projectTitle, setProjectTitle] = useState('');
+  const [showActivity, setShowActivity] = useState(true);
   const logsEndRef = useRef(null);
   // Collapsed on phones: the log tail is the least useful thing on a 360px
   // screen and it was pushing the actual clips a full scroll down.
@@ -3604,12 +3605,21 @@ function App() {
                         </span>
                       </div>
                       <h1 className="text-sm sm:text-base font-bold text-ink truncate max-w-xl">
-                        {projectTitle || results?.video_title || results?.title || 'ClipSnipr Project'}
+                        {projectTitle || results?.video_title || results?.title || results?.stream_title || results?.clips?.[0]?.video_title_for_youtube_short || (jobId ? `Project #${jobId}` : 'Clip Studio Project')}
                       </h1>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowActivity(!showActivity)}
+                      className="btn-ghost px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+                      title={showActivity ? "Hide activity log for full-width clips view" : "Show pipeline activity log"}
+                    >
+                      {showActivity ? <PanelLeftClose size={14} /> : <Activity size={14} className="text-brandblue" />}
+                      <span className="hidden sm:inline">{showActivity ? "Focus Mode" : "Show Activity"}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={handleReset}
@@ -3626,7 +3636,8 @@ function App() {
               <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 pt-0 overflow-y-auto md:overflow-y-hidden custom-scrollbar">
 
                 {/* Left Page: Pipeline Activity Logs (Text in Boxes with Colored Timestamps) */}
-                <div className="w-full md:w-[42%] lg:w-[40%] md:h-full flex flex-col shrink-0 card p-0 overflow-hidden border border-rule bg-paper">
+                {showActivity && (
+                  <div className="w-full md:w-[38%] lg:w-[35%] md:h-full flex flex-col shrink-0 card p-0 overflow-hidden border border-rule bg-paper transition-all duration-200">
                   
                   {/* Left Page Header */}
                   <div className="p-3.5 sm:p-4 border-b border-rule bg-paper2 flex items-center justify-between shrink-0">
@@ -3731,9 +3742,10 @@ function App() {
                   </div>
 
                 </div>
+                )}
 
                 {/* Right Page: Generated Shorts Workspace */}
-                <div className="w-full md:w-[58%] lg:w-[60%] md:h-full flex flex-col shrink-0 card p-0 overflow-hidden border border-rule bg-paper">
+                <div className={`w-full ${showActivity ? 'md:w-[62%] lg:w-[65%]' : 'w-full'} md:h-full flex-1 flex flex-col shrink-0 card p-0 overflow-hidden border border-rule bg-paper transition-all duration-200`}>
                   
                   {/* Right Page Header */}
                   <div className="p-3.5 sm:p-4 border-b border-rule bg-paper2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
@@ -3751,6 +3763,14 @@ function App() {
 
                     {results?.clips?.length > 0 && (
                       <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => setShowActivity(!showActivity)}
+                          className="btn-ghost px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5"
+                          title={showActivity ? "Expand shorts to full screen width" : "Show pipeline activity log"}
+                        >
+                          {showActivity ? <PanelLeftClose size={13} /> : <PanelLeft size={13} className="text-brandblue" />}
+                          <span>{showActivity ? 'Full Width' : 'Split View'}</span>
+                        </button>
                         <button
                           onClick={handleDownloadAll}
                           disabled={downloadingAll}
@@ -3861,7 +3881,7 @@ function App() {
                   {/* Shorts Content Grid or Meaningful Empty State */}
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-5 min-h-0">
                     {results && results.clips && results.clips.length > 0 ? (
-                      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-5 pb-10">
+                      <div className={`grid ${showActivity ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'} gap-5 pb-10`}>
                         {rankedClips.map(({ clip, index: i }) => (
                           <ResultCard
                             key={`${jobId}-${i}-${clip.video_url || ''}`}

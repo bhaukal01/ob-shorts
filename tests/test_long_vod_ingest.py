@@ -35,6 +35,7 @@ class TestLongVodIngest(unittest.TestCase):
         # Kick VODs
         self.assertTrue(long_vod_ingest.is_marathon_vod("https://kick.com/video/553b-4890-a123-abcdef"))
         self.assertTrue(long_vod_ingest.is_marathon_vod("https://www.kick.com/video/998877"))
+        self.assertTrue(long_vod_ingest.is_marathon_vod("https://kick.com/rachitroo_1/videos/01a1ed90-d798-7a66-8a05-15e6f8b61d5c"))
 
         # Twitch VODs
         self.assertTrue(long_vod_ingest.is_marathon_vod("https://twitch.tv/videos/123456789"))

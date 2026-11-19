@@ -6304,6 +6304,11 @@ def _job_view_from_disk(job_id):
     means the other instance has it (heartbeat) or will pick it up (queued).
     """
     job_path = os.path.join(OUTPUT_DIR, job_id)
+    if not os.path.isdir(job_path) and os.path.exists(OUTPUT_DIR):
+        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if (d.startswith(job_id) or job_id.startswith(d)) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
+        if prefix_matches:
+            job_path = os.path.join(OUTPUT_DIR, prefix_matches[0])
+            job_id = prefix_matches[0]
     if not os.path.isdir(job_path):
         return None
     m = _read_manifest(job_id)
@@ -6322,7 +6327,7 @@ def _job_view_from_disk(job_id):
         return {'status': 'failed', 'logs': _TimedLog([_expired_log(kind)]),
                 'user_id': owner, 'result': None, 'queue_expired': True}
     if m is None:
-        if glob.glob(os.path.join(job_path, "*_metadata.json")):
+        if glob.glob(os.path.join(job_path, "*metadata*.json")):
             _recover_jobs_from_disk()
             return jobs.get(job_id)
         return None
@@ -6861,26 +6866,32 @@ async def _ensure_job_files(job_id: str, request: Request) -> bool:
     Returns True when the job is available afterwards. Never raises: callers
     keep their own 404s for jobs that genuinely don't exist.
     """
+    orig_job_id = job_id
     job_dir = os.path.join(OUTPUT_DIR, job_id)
+    resolved_id = job_id
     if not os.path.isdir(job_dir) and os.path.exists(OUTPUT_DIR):
-        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if d.startswith(job_id) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
+        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if (d.startswith(job_id) or job_id.startswith(d)) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
         if prefix_matches:
-            job_id = prefix_matches[0]
-            job_dir = os.path.join(OUTPUT_DIR, job_id)
+            resolved_id = prefix_matches[0]
+            job_dir = os.path.join(OUTPUT_DIR, resolved_id)
 
     # 1. Active stream monitor in memory
     try:
         import stream_monitor
-        active_stream = stream_monitor.get_stream_job(job_id)
+        active_stream = stream_monitor.get_stream_job(resolved_id) or stream_monitor.get_stream_job(orig_job_id)
         if active_stream:
-            jobs[job_id] = active_stream
+            jobs[orig_job_id] = active_stream
+            jobs[resolved_id] = active_stream
             return True
     except Exception:
         pass
 
     # 2. Already in memory and metadata present
-    meta_files = glob.glob(os.path.join(job_dir, "*_metadata.json"))
-    if job_id in jobs and meta_files:
+    meta_files = glob.glob(os.path.join(job_dir, "*metadata*.json"))
+    if (orig_job_id in jobs or resolved_id in jobs) and meta_files:
+        existing = jobs.get(resolved_id) or jobs.get(orig_job_id)
+        jobs[orig_job_id] = existing
+        jobs[resolved_id] = existing
         return True
 
     # 3. Present on disk in OUTPUT_DIR — restore into jobs dict
@@ -6889,29 +6900,38 @@ async def _ensure_job_files(job_id: str, request: Request) -> bool:
             with open(meta_files[0], "r", encoding="utf-8") as f:
                 m = json.load(f)
             shorts = m.get("shorts", [])
-            jobs[job_id] = {
-                "job_id": job_id,
+            job_record = {
+                "job_id": resolved_id,
                 "status": "completed",
-                "title": m.get("title") or m.get("video_title") or job_id,
-                "video_title": m.get("video_title") or m.get("title") or job_id,
+                "title": m.get("title") or m.get("video_title") or resolved_id,
+                "video_title": m.get("video_title") or m.get("title") or resolved_id,
                 "result": {"clips": shorts},
                 "ready_files": {os.path.basename(c.get("video_url", "")): c for c in shorts if c.get("video_url")},
                 "logs": ["Restored from local storage."],
                 "is_stream": m.get("is_stream", False),
             }
+            jobs[orig_job_id] = job_record
+            jobs[resolved_id] = job_record
             return True
         except Exception as e:
-            print(f"⚠️ Could not restore job {job_id} from local metadata: {e}")
+            print(f"⚠️ Could not restore job {resolved_id} from local metadata: {e}")
+
+    # 4. Check disk via _job_view_from_disk
+    rec = _job_view_from_disk(resolved_id) or _job_view_from_disk(orig_job_id)
+    if rec:
+        jobs[orig_job_id] = rec
+        jobs[resolved_id] = rec
+        return True
 
     if not BILLING_ENABLED:
         return False
     try:
-        await restore_project(job_id, request)
+        await restore_project(orig_job_id, request)
         return True
     except HTTPException:
         return False
     except Exception as e:
-        print(f"⚠️  Auto-restore failed for {job_id}: {e}")
+        print(f"⚠️  Auto-restore failed for {orig_job_id}: {e}")
         return False
 
 
@@ -7297,14 +7317,27 @@ async def get_clip_edl(job_id: str, clip_index: int, request: Request):
     job = jobs[job_id]
     await _assert_job_owner(request, job)
 
-    output_dir = os.path.join(OUTPUT_DIR, job_id)
-    json_files = glob.glob(os.path.join(output_dir, "*_metadata.json"))
-    if not json_files:
-        raise HTTPException(status_code=404, detail="Metadata not found")
-    with open(json_files[0], 'r') as f:
-        data = json.load(f)
+    resolved_job_id = job.get("job_id", job_id)
+    output_dir = os.path.join(OUTPUT_DIR, resolved_job_id)
+    if not os.path.isdir(output_dir) and os.path.isdir(os.path.join(OUTPUT_DIR, job_id)):
+        output_dir = os.path.join(OUTPUT_DIR, job_id)
 
-    clips = data.get('shorts', [])
+    data = None
+    json_files = glob.glob(os.path.join(output_dir, "*metadata*.json"))
+    if json_files:
+        try:
+            with open(json_files[0], 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            pass
+
+    if not data and (job.get("result", {}).get("clips") or job.get("shorts")):
+        data = job.get("result") or {"shorts": job.get("shorts", [])}
+
+    if not data:
+        raise HTTPException(status_code=404, detail="Metadata not found")
+
+    clips = data.get('shorts') or data.get('clips', [])
     if clip_index < 0 or clip_index >= len(clips):
         raise HTTPException(status_code=404, detail="Clip not found")
     clip = clips[clip_index]
@@ -7631,14 +7664,27 @@ async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
     # source, runs scene detection and encodes a preview.
     _check_editor_rate(await _owner_id(request), bucket="scenes")
 
-    output_dir = os.path.join(OUTPUT_DIR, job_id)
-    json_files = glob.glob(os.path.join(output_dir, "*_metadata.json"))
-    if not json_files:
-        raise HTTPException(status_code=404, detail="Metadata not found")
-    with open(json_files[0], 'r') as f:
-        data = json.load(f)
+    resolved_job_id = job.get("job_id", job_id)
+    output_dir = os.path.join(OUTPUT_DIR, resolved_job_id)
+    if not os.path.isdir(output_dir) and os.path.isdir(os.path.join(OUTPUT_DIR, job_id)):
+        output_dir = os.path.join(OUTPUT_DIR, job_id)
 
-    clips = data.get('shorts', [])
+    data = None
+    json_files = glob.glob(os.path.join(output_dir, "*metadata*.json"))
+    if json_files:
+        try:
+            with open(json_files[0], 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            pass
+
+    if not data and (job.get("result", {}).get("clips") or job.get("shorts")):
+        data = job.get("result") or {"shorts": job.get("shorts", [])}
+
+    if not data:
+        raise HTTPException(status_code=404, detail="Metadata not found")
+
+    clips = data.get('shorts') or data.get('clips', [])
     if clip_index < 0 or clip_index >= len(clips):
         raise HTTPException(status_code=404, detail="Clip not found")
 
@@ -7653,10 +7699,10 @@ async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
     # since a re-render rebuilds from source using ONLY what it is sent, the
     # next save would silently drop every earlier adjustment.
     saved_overrides = clip.get('crop_overrides') or {}
-    candidate_raw = os.path.join(output_dir, f"{job_id}_clip_{clip_index + 1}.mp4")
+    candidate_raw = os.path.join(output_dir, f"{resolved_job_id}_clip_{clip_index + 1}.mp4")
     clip_fn = os.path.basename(clip.get('video_url', ''))
     actual_clip_path = os.path.join(output_dir, clip_fn) if clip_fn else None
-    source_path = _locate_source(job_id)
+    source_path = _locate_source(resolved_job_id) or _locate_source(job_id)
     is_direct_clip = False
     if not source_path and os.path.exists(candidate_raw):
         source_path = candidate_raw

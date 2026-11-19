@@ -74,7 +74,7 @@ def is_marathon_vod(
             pass
 
         u = url_or_duration.strip().lower()
-        if "kick.com/video/" in u:
+        if "kick.com/" in u and ("/video/" in u or "/videos/" in u):
             return True
         if "twitch.tv/videos/" in u:
             return True

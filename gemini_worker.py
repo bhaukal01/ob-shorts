@@ -45,6 +45,7 @@ class DetailClipModel(BaseModel):
     # the dashboard. Defaulted so a small local model that skips it does not
     # fail schema validation and lose the clip.
     why: str = ""
+    tags: List[str] = []
 
 
 class DetailResponse(BaseModel):
@@ -62,6 +63,7 @@ class VisualClipModel(BaseModel):
     video_description_for_instagram: str
     video_title_for_youtube_short: str
     viral_hook_text: str
+    tags: List[str] = []
 
 
 class VisualResponse(BaseModel):
@@ -343,12 +345,20 @@ HOOK PLAYBOOK — pick the strongest fitting pattern for `viral_hook_text` (max 
 
 COPY RULES — {metadata_instructions}
 - Descriptions (TikTok + Instagram): 1-2 punchy sentences that tease the payoff
-  without spoiling it, then 3-5 topically relevant hashtags. No generic hashtag spam.
+  without spoiling it, then 4-7 topically relevant hashtags.
+- NICHE & SPECIFIC HASHTAG RULES:
+  * Detect the exact game title, creator/streamer name, software tool, or niche topic from SOURCE_VIDEO_TITLE and the clip.
+  * If gaming: ALWAYS include the exact game name (e.g. #GTA6, #GTAVI, #GrandTheftAuto, #Minecraft, #Valorant, #BGMI) + creator tag + #Gaming.
+  * If tech/coding: include the language/framework/topic (e.g. #Python, #AI, #Coding, #Tech).
+  * If finance/business: include the market/asset (e.g. #StockMarket, #Crypto, #Investing).
+  * If comedy/roast/podcast: include the creator/podcast name + niche.
+  * Always append these hashtags to both descriptions and output them in the "tags" list.
 - `video_title_for_youtube_short`: max 100 chars, curiosity-driven, no fake claims.
 - `predicted_score`: honest 0-100 estimate of viral potential.
 - `why`: one sentence, max 20 words, naming what makes THIS moment worth a
   clip — the specific hook, claim, number or payoff, not the topic.
 
+SOURCE_VIDEO_TITLE: "{video_title}"
 TRANSCRIPT_LANGUAGE: {language}
 VIDEO_DURATION_SECONDS: {video_duration}
 CANDIDATE_WINDOWS_JSON:
@@ -362,11 +372,12 @@ Return only:
       "end": <number>,
       "source_window_id": "<window id>",
       "predicted_score": <integer 0-100>,
-      "video_description_for_tiktok": "<description + hashtags>",
-      "video_description_for_instagram": "<description + hashtags>",
+      "video_description_for_tiktok": "<description + 4-7 specific hashtags>",
+      "video_description_for_instagram": "<description + 4-7 specific hashtags>",
       "video_title_for_youtube_short": "<title max 100 chars>",
       "viral_hook_text": "<short overlay max 10 words>",
-      "why": "<one sentence, max 20 words>"
+      "why": "<one sentence, max 20 words>",
+      "tags": ["#SpecificGameOrTopic", "#Niche", "#CreatorOrEntity", "#Shorts", "#Viral"]
     }}
   ]
 }}
@@ -666,6 +677,7 @@ def main() -> int:
     fmt = {
         "video_duration": payload["video_duration"],
         "language": language,
+        "video_title": payload.get("video_title") or payload.get("title") or "Source Video",
         "windows_json": json.dumps(payload["windows"], ensure_ascii=False),
     }
     if args.mode != "score":
