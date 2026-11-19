@@ -109,31 +109,24 @@ INSET_ASPECT = 16 / 9.0
 
 
 def _place(x, y, w, h, new_w, new_h, frame_w, frame_h, horizontal, vertical):
-    """Top-left corner of a new_w x new_h box grown around the detection."""
-    # Anchor: keep the edge the subject is already near, grow the other way.
-    if horizontal == "left":
-        new_x = max(0, min(x - (new_w - w) / 2.0, frame_w - new_w))
-        if x <= frame_w * CORNER_MARGIN:
-            new_x = 0
-    else:
-        new_x = max(0, min(x + w + (new_w - w) / 2.0 - new_w, frame_w - new_w))
-        if (x + w) >= frame_w * (1 - CORNER_MARGIN):
-            new_x = frame_w - new_w
+    """Top-left corner of a new_w x new_h box grown around the detection.
+    
+    Centers the subject inside the new dimensions while safely clamping to the
+    frame borders, so streamer faces are never pushed off-center or cut off.
+    """
+    # Horizontal: center on subject's center
+    cx = x + w / 2.0
+    new_x = max(0, min(cx - new_w / 2.0, frame_w - new_w))
 
-    # Vertical growth is biased upwards: detectors return the head or the chest,
-    # and a portrait needs headroom, not more torso. Splitting the growth evenly
-    # cropped the top of the head off on real clips.
+    # Vertical growth is biased upwards for headroom
     grow = new_h - h
     if vertical == "top":
         new_y = max(0, min(y - grow * 0.6, frame_h - new_h))
-        if y <= frame_h * CORNER_MARGIN:
-            new_y = 0
     else:
-        # Pin to the bottom edge: the inset is there, and the detection sits
-        # somewhere inside it rather than at its top.
-        new_y = frame_h - new_h
-        if (y + h) < frame_h * (1 - CORNER_MARGIN):
-            new_y = max(0, min(y - grow * 0.6, frame_h - new_h))
+        # Bottom corner: give headroom above while clamping to bottom edge
+        new_y = max(0, min(y - grow * 0.6, frame_h - new_h))
+        if (y + h) >= frame_h * (1 - CORNER_MARGIN):
+            new_y = frame_h - new_h
     return new_x, new_y
 
 
@@ -476,14 +469,23 @@ def gaming_inset_filtergraph(orig_w, orig_h, out_w, out_h, box, camera_ratio=0.3
     # Fit webcam box to target aspect (out_w / cam_h)
     target_aspect = out_w / float(cam_h)
     x, y, w, h = box
-    if w / float(h) < target_aspect:
+    cx = x + w / 2.0
+    cy = y + h / 2.0
+
+    if w / float(h) >= target_aspect:
+        # Webcam region is wider than target aspect ratio (e.g. 16:9 box into 3:2 frame):
+        # Crop width around cx so streamer's face/person is perfectly centered horizontally!
         want_w = min(orig_w, int(round(h * target_aspect)))
-        x = int(round(x + w / 2.0 - want_w / 2.0))
+        x = int(round(cx - want_w / 2.0))
         w = want_w
     else:
+        # Webcam region is narrower than target aspect ratio:
+        # Crop height around cy to preserve target aspect ratio
         want_h = min(orig_h, int(round(w / target_aspect)))
-        y = int(round(y + h / 2.0 - want_h / 2.0))
+        y = int(round(cy - want_h / 2.0))
         h = want_h
+
+    # Ensure box stays within source frame boundaries
     x = max(0, min(x, orig_w - w))
     y = max(0, min(y, orig_h - h))
 

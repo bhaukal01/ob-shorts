@@ -625,7 +625,8 @@ export default function LiveStreamTab({ onReopenProject, youtubeAccounts: propYt
       {/* SINGLE INSTANCE VIDEO PLAYER MODAL */}
       {activePlayerClip && (
         <div
-          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-ink/80 backdrop-blur-xs animate-fade"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ink/85 backdrop-blur-sm animate-fade"
+          style={{ zIndex: 100 }}
           onClick={() => setActivePlayerClip(null)}
         >
           <div

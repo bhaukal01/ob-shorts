@@ -6390,6 +6390,12 @@ def _presented_status(job_id, job):
 @app.get("/api/status/{job_id}")
 async def get_status(job_id: str, request: Request):
     job_path = os.path.join(OUTPUT_DIR, job_id)
+    if not os.path.exists(job_path) and os.path.exists(OUTPUT_DIR):
+        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if d.startswith(job_id) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
+        if prefix_matches:
+            job_id = prefix_matches[0]
+            job_path = os.path.join(OUTPUT_DIR, job_id)
+
     if os.path.exists(os.path.join(job_path, ".deleted")):
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -6856,6 +6862,11 @@ async def _ensure_job_files(job_id: str, request: Request) -> bool:
     keep their own 404s for jobs that genuinely don't exist.
     """
     job_dir = os.path.join(OUTPUT_DIR, job_id)
+    if not os.path.isdir(job_dir) and os.path.exists(OUTPUT_DIR):
+        prefix_matches = [d for d in os.listdir(OUTPUT_DIR) if d.startswith(job_id) and os.path.isdir(os.path.join(OUTPUT_DIR, d))]
+        if prefix_matches:
+            job_id = prefix_matches[0]
+            job_dir = os.path.join(OUTPUT_DIR, job_id)
 
     # 1. Active stream monitor in memory
     try:
@@ -6926,9 +6937,15 @@ async def edit_clip(
     # header). Self-host keeps BYOK — the body key wins there.
     body_key = None if BILLING_ENABLED else req.api_key
     final_api_key = body_key or await resolve_gemini(request)
+    use_custom_llm = not final_api_key and not BILLING_ENABLED and (
+        llm_backend.active() or llm_backend.provider() == "openai" or bool(llm_backend.base_url())
+    )
 
-    if not final_api_key:
-        raise gemini_missing_error()
+    if not final_api_key and not use_custom_llm:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing AI Key: Configure Google Gemini or OpenAI-compatible LLM in Settings."
+        )
 
     await _ensure_job_files(req.job_id, request)
     if req.job_id not in jobs:
@@ -6990,10 +7007,7 @@ async def edit_clip(
             shutil.copy(input_path, safe_input_path)
             
             try:
-                # 1. Upload (using safe path)
-                vid_file = editor.upload_video(safe_input_path)
-                
-                # 2. Get duration
+                # 1. Get duration and metadata
                 import cv2
                 cap = cv2.VideoCapture(safe_input_path)
                 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -7014,12 +7028,37 @@ async def edit_clip(
                 except Exception as e:
                     print(f"⚠️ Could not load transcript for editing context: {e}")
 
-                # 3. Get Plan (Filter String)
-                # Zooms would crop burned-in captions/hooks off screen, so tell
-                # the editor when the source already carries them. `filename` is
-                # the original clip name (safe_input_path is an ASCII temp copy).
                 has_captions = ("subtitled_" in filename) or ("hook_" in filename) or ("hooked_" in filename)
-                filter_data = editor.get_ffmpeg_filter(vid_file, duration, fps=fps, width=width, height=height, transcript=transcript, has_captions=has_captions)
+
+                if use_custom_llm:
+                    from edit_builder import build_filter_string
+                    from editor import EditPlan
+                    caption_rule = (
+                        "\n        CRITICAL: This video already has burned-in captions and/or a hook text. "
+                        "Any zoom would crop or shift them off screen. Do NOT use zoom_in, punch_in or zoom_pulse — "
+                        "only color_pop, bw_moment, flash and vignette are allowed.\n"
+                    ) if has_captions else ""
+                    prompt = f"""You are a viral short-form video editor (TikTok / Reels / Shorts). You receive a video transcript.
+Decide WHERE a small set of tasteful, high-impact effects belongs. You return an edit decision list.
+Video duration: {duration:.1f} seconds. Resolution: {width}x{height}.
+Available effect types: "zoom_in", "punch_in", "zoom_pulse", "color_pop", "bw_moment", "flash", "vignette".
+Rules:
+1. Match effects to the CONTENT: place them on key words or punchlines using transcript timestamps.
+2. 2-5 edits per 30 seconds. Never overlap zooms.
+{caption_rule}
+TRANSCRIPT:
+{json.dumps(transcript) if transcript else "Not available."}
+"""
+                    plan_json, _ = llm_backend.generate_json(prompt, EditPlan)
+                    raw_edits = plan_json.get("edits", []) if isinstance(plan_json, dict) else []
+                    filter_string, applied = build_filter_string(
+                        raw_edits, duration=duration, fps=fps, width=width, height=height,
+                        has_captions=has_captions
+                    )
+                    filter_data = {"filter_string": filter_string, "edits": applied}
+                else:
+                    vid_file = editor.upload_video(safe_input_path)
+                    filter_data = editor.get_ffmpeg_filter(vid_file, duration, fps=fps, width=width, height=height, transcript=transcript, has_captions=has_captions)
                 
                 # 4. Apply
                 # Use safe output name first
@@ -7615,10 +7654,15 @@ async def get_clip_scenes(job_id: str, clip_index: int, request: Request):
     # next save would silently drop every earlier adjustment.
     saved_overrides = clip.get('crop_overrides') or {}
     candidate_raw = os.path.join(output_dir, f"{job_id}_clip_{clip_index + 1}.mp4")
+    clip_fn = os.path.basename(clip.get('video_url', ''))
+    actual_clip_path = os.path.join(output_dir, clip_fn) if clip_fn else None
     source_path = _locate_source(job_id)
     is_direct_clip = False
     if not source_path and os.path.exists(candidate_raw):
         source_path = candidate_raw
+        is_direct_clip = True
+    elif not source_path and actual_clip_path and os.path.exists(actual_clip_path):
+        source_path = actual_clip_path
         is_direct_clip = True
 
     if not source_path:
@@ -7994,9 +8038,15 @@ async def generate_effects_config(
 ):
     """Generate structured EffectsConfig JSON for Remotion rendering via Gemini AI."""
     final_api_key = await resolve_gemini(request)
+    use_custom_llm = not final_api_key and not BILLING_ENABLED and (
+        llm_backend.active() or llm_backend.provider() == "openai" or bool(llm_backend.base_url())
+    )
 
-    if not final_api_key:
-        raise gemini_missing_error()
+    if not final_api_key and not use_custom_llm:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing AI Key: Configure Google Gemini or OpenAI-compatible LLM in Settings."
+        )
 
     await _ensure_job_files(req.job_id, request)
     if req.job_id not in jobs:
@@ -8033,9 +8083,6 @@ async def generate_effects_config(
             shutil.copy(input_path, safe_input_path)
 
             try:
-                # Upload video to Gemini
-                vid_file = editor.upload_video(safe_input_path)
-
                 # Get video metadata via ffprobe
                 probe_cmd = [
                     'ffprobe', '-v', 'error',
@@ -8073,12 +8120,27 @@ async def generate_effects_config(
                 except Exception as e:
                     print(f"⚠️ Could not load transcript for effects config: {e}")
 
-                # Generate effects config
-                effects_config = editor.get_effects_config(
-                    vid_file, duration, fps=fps, width=width, height=height, transcript=transcript
-                )
+                if use_custom_llm:
+                    from editor import EffectsConfig
+                    transcript_text = json.dumps(transcript) if transcript else "Not available."
+                    prompt = f"""You are an expert video editor generating dynamic visual effects for a Remotion renderer.
+Video Duration: {duration} seconds. Resolution: {width}x{height}. FPS: {fps}.
+TRANSCRIPT:
+{transcript_text}
 
-                return effects_config
+Produce a structured JSON with 'segments' covering the FULL video duration (0 to {duration} seconds) with no gaps.
+Each segment has: startSec, endSec, zoom (1.0 to 1.3), zoomCenterX (0.0 to 1.0, 0.5 default), zoomCenterY (0.0 to 1.0, 0.5 default), brightness (0.9 to 1.1), contrast (0.9 to 1.2), saturate (0.9 to 1.2).
+Prefer subtle zooms (1.05 to 1.15) on speaking moments, no gaps.
+"""
+                    plan_json, _ = llm_backend.generate_json(prompt, EffectsConfig)
+                    return plan_json
+                else:
+                    # Upload video to Gemini
+                    vid_file = editor.upload_video(safe_input_path)
+                    effects_config = editor.get_effects_config(
+                        vid_file, duration, fps=fps, width=width, height=height, transcript=transcript
+                    )
+                    return effects_config
             finally:
                 if os.path.exists(safe_input_path):
                     os.remove(safe_input_path)

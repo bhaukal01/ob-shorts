@@ -58,9 +58,9 @@ class TestDeliverySize:
         # 360x640 sources were shipping as-is; platforms treat that as junk.
         assert delivery_size(640, 360, VERTICAL) == (1080, 1920)
 
-    def test_high_res_source_is_never_downscaled(self):
-        # 4K source: the native crop is already well past the floor, so keep it.
-        assert delivery_size(3840, 2160, VERTICAL) == (1216, 2160)
+    def test_high_res_source_is_capped_at_1080_maximum(self):
+        # 4K source: capped at 1080p maximum delivery (1080x1920)
+        assert delivery_size(3840, 2160, VERTICAL) == (1080, 1920)
 
     def test_already_vertical_source_keeps_its_full_height(self):
         assert delivery_size(1080, 1920, VERTICAL) == (1080, 1920)

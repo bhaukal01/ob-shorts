@@ -42,6 +42,8 @@ ANALYSIS_MAX_WIDTH = 640
 # rather than shipping sub-HD. Sources that already exceed it are left alone
 # (never downscale quality the user supplied).
 DELIVERY_MIN_WIDTH = 1080
+DELIVERY_MAX_WIDTH = 1080
+DELIVERY_MAX_HEIGHT = 1920
 
 
 # --- pure helpers (CI-testable) --------------------------------------------
@@ -49,9 +51,9 @@ DELIVERY_MIN_WIDTH = 1080
 def delivery_size(orig_w, orig_h, aspect_ratio):
     """Output (width, height) for a reframe of this source.
 
-    Picks the largest crop the source allows, then upscales to
-    ``DELIVERY_MIN_WIDTH`` if that crop is narrower. Both dimensions come back
-    even (x264/NVENC reject odd ones).
+    Picks the largest crop the source allows, upscales to ``DELIVERY_MIN_WIDTH``
+    if narrower, and clamps to 1080 maximum delivery (1080x1920 max). Both dimensions
+    come back even (x264/NVENC reject odd ones).
     """
     out_h = orig_h
     out_w = int(out_h * aspect_ratio)
@@ -62,6 +64,14 @@ def delivery_size(orig_w, orig_h, aspect_ratio):
     if out_w < DELIVERY_MIN_WIDTH:
         out_w = DELIVERY_MIN_WIDTH
         out_h = int(round(out_w / aspect_ratio))
+
+    if out_w > DELIVERY_MAX_WIDTH:
+        out_w = DELIVERY_MAX_WIDTH
+        out_h = int(round(out_w / aspect_ratio))
+
+    if out_h > DELIVERY_MAX_HEIGHT:
+        out_h = DELIVERY_MAX_HEIGHT
+        out_w = int(round(out_h * aspect_ratio))
 
     return out_w + (out_w % 2), out_h + (out_h % 2)
 

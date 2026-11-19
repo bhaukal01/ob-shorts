@@ -1,5 +1,6 @@
 from camera_inset import (
     INSET_ASPECT,
+    gaming_inset_filtergraph,
     inset_box,
     inset_filtergraph,
     is_cornered,
@@ -142,3 +143,14 @@ class TestInsetFiltergraph:
         cam = graph.split("[ca]")[-1].split("[cam]")[0]
         for key in ("w=", "h=", "x=", "y="):
             assert int(cam.split(key)[1].split(":")[0].split(",")[0]) % 2 == 0
+
+    def test_gaming_inset_centers_facecam_horizontally(self):
+        # A 16:9 webcam in bottom left (x=100, y=700, w=480, h=270). Face center cx = 340.
+        # Target aspect = 1080 / 720 = 1.5. want_w = 270 * 1.5 = 405.
+        # Centering on cx: x = 340 - 202 = 138 (must NOT be pinned to 0).
+        graph = gaming_inset_filtergraph(1920, 1080, 1080, 1920, (100, 700, 480, 270))
+        cam = graph.split("[ca]")[-1].split("[cam]")[0]
+        crop_x = int(cam.split("x=")[1].split(":")[0])
+        assert crop_x > 0, f"Facecam crop should center on face rather than snapping to 0, got {crop_x}"
+        assert abs(crop_x - 138) <= 4, f"Expected crop_x ~138, got {crop_x}"
+

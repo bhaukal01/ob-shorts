@@ -90,8 +90,9 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
         do { prev = f; f = f.replace(/^subtitled_\d+_/, '').replace(/^hooked_\d+_/, '').replace(/^hook_/, ''); } while (f !== prev);
         return f;
     };
-    const originalVideoUrl = getApiUrl((clip.video_url || '').replace(/[^/]+$/, stripBurns((clip.video_url || '').split('/').pop())));
-    const [currentVideoUrl, setCurrentVideoUrl] = useState(getApiUrl(clip.video_url));
+    const initialVideoUrl = clip.stream_url || getApiUrl(clip.video_url);
+    const originalVideoUrl = clip.stream_url || getApiUrl((clip.video_url || '').replace(/[^/]+$/, stripBurns((clip.video_url || '').split('/').pop())));
+    const [currentVideoUrl, setCurrentVideoUrl] = useState(initialVideoUrl);
     // Where the <video> element pulls its bytes from. The clips are archived to
     // R2 anyway, and R2 egress is free and edge-served, while /videos is served
     // by the same single-worker API process that is running the renders. So play
@@ -123,7 +124,9 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
     const downloadClip = async () => {
         try {
             setDownloadPct(0);
-            const response = await fetch(currentVideoUrl);
+            const targetUrl = currentVideoUrl || clip.stream_url;
+            if (!targetUrl) throw new Error('Download failed: No URL');
+            const response = await fetch(targetUrl);
             if (!response.ok) throw new Error('Download failed');
             const total = Number(response.headers.get('content-length')) || 0;
             let blob;
@@ -155,7 +158,8 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
             document.body.removeChild(a);
         } catch (err) {
             console.error('Download error:', err);
-            window.open(currentVideoUrl, '_blank');
+            const fallback = currentVideoUrl || clip.stream_url;
+            if (fallback) window.open(fallback, '_blank');
         } finally {
             setDownloadPct(null);
         }
@@ -195,7 +199,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
     // subtitles applied from another card), adopt it so the card shows the
     // freshly subtitled video instead of a stale one.
     useEffect(() => {
-        const serverUrl = getApiUrl(clip.video_url);
+        const serverUrl = clip.stream_url || getApiUrl(clip.video_url);
         const serverName = (clip.video_url || '').split('/').pop();
         if (serverName && serverName !== serverVideoFile) {
             setServerVideoFile(serverName);
@@ -205,7 +209,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
             if (videoRef.current) videoRef.current.load();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [clip.video_url]);
+    }, [clip.video_url, clip.stream_url]);
 
     const [platforms, setPlatforms] = useState({
         tiktok: true,
@@ -347,12 +351,6 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
         setEditError(null);
         try {
             const apiKey = geminiApiKey || localStorage.getItem('gemini_key');
-
-            // Managed (paid) users get the Gemini key resolved server-side;
-            // only BYOK/self-host needs a local key.
-            if (!apiKey && !isManaged) {
-                throw new Error("Auto Edit requires Google Gemini for video analysis. When using custom OpenAI API, use Edit Clip, Reframing, or Subtitles, or add a Gemini key in Settings.");
-            }
             const geminiHeaders = apiKey ? { 'X-Gemini-Key': apiKey } : {};
 
             // Try Remotion effects endpoint first
@@ -844,7 +842,7 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
     // in this tab, so they always win over the durable copy.
     const playbackUrl = (durableSrc && !durableFailed && !String(currentVideoUrl || '').startsWith('blob:'))
         ? durableSrc
-        : currentVideoUrl;
+        : (currentVideoUrl || clip.stream_url);
 
     const durationReadout = formatDuration(clip);
 
@@ -871,6 +869,11 @@ export default function ResultCard({ clip, index, jobId, durable, uploadPostKey,
                         // the rest of this card's life.
                         if (playbackUrl === durableSrc) {
                             setDurableFailed(true);
+                            return;
+                        }
+                        // S3 direct fallback if local file is cleaned up
+                        if (clip.stream_url && currentVideoUrl !== clip.stream_url) {
+                            setCurrentVideoUrl(clip.stream_url);
                             return;
                         }
                         // Local /videos/ file gone (e.g. cleaned up after a reload) →

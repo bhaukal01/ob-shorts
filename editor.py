@@ -25,9 +25,24 @@ class EditPlan(BaseModel):
     edits: List[EditDecision]
 
 
+class EffectSegment(BaseModel):
+    startSec: float
+    endSec: float
+    zoom: float = 1.0
+    zoomCenterX: float = 0.5
+    zoomCenterY: float = 0.5
+    brightness: float = 1.0
+    contrast: float = 1.0
+    saturate: float = 1.0
+
+
+class EffectsConfig(BaseModel):
+    segments: List[EffectSegment]
+
+
 class VideoEditor:
     def __init__(self, api_key):
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(api_key=api_key) if api_key and api_key != "none" else None
         self.model_name = (
             os.environ.get("GEMINI_MODEL_EDITOR")
             or os.environ.get("GEMINI_MODEL")
