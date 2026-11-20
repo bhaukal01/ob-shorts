@@ -264,7 +264,13 @@ async def upload_youtube_shorts(
         # Step 1: Initiate resumable upload session
         init_resp = await client.post(init_url, headers=headers, json=metadata)
         if init_resp.status_code not in (200, 201):
-            raise RuntimeError(f"Failed to initiate YouTube upload: HTTP {init_resp.status_code} - {init_resp.text}")
+            err_text = init_resp.text
+            if "youtubeSignupRequired" in err_text:
+                raise RuntimeError(
+                    "YouTube upload failed (youtubeSignupRequired): The connected Google account does not have a YouTube channel created yet. "
+                    "Please visit https://studio.youtube.com or https://youtube.com, click 'Create a channel' (or disconnect and re-connect selecting your specific Brand Account/Channel during login), then try publishing again."
+                )
+            raise RuntimeError(f"Failed to initiate YouTube upload: HTTP {init_resp.status_code} - {err_text}")
 
         upload_url = init_resp.headers.get("Location")
         if not upload_url:
@@ -281,7 +287,13 @@ async def upload_youtube_shorts(
             upload_resp = await client.put(upload_url, headers=upload_headers, content=f.read())
 
         if upload_resp.status_code not in (200, 201):
-            raise RuntimeError(f"YouTube upload transfer failed: HTTP {upload_resp.status_code} - {upload_resp.text}")
+            err_text = upload_resp.text
+            if "youtubeSignupRequired" in err_text:
+                raise RuntimeError(
+                    "YouTube upload failed (youtubeSignupRequired): The connected Google account does not have a YouTube channel created yet. "
+                    "Please visit https://studio.youtube.com or https://youtube.com, click 'Create a channel', then try publishing again."
+                )
+            raise RuntimeError(f"YouTube upload transfer failed: HTTP {upload_resp.status_code} - {err_text}")
 
         result_data = upload_resp.json()
 
@@ -294,65 +306,6 @@ async def upload_youtube_shorts(
         "status": "published",
         "account_id": account.get("id"),
         "account_name": account.get("account_name", ""),
-        "raw": result_data,
-    }
-    if "#shorts" not in desc.lower() and "#shorts" not in title.lower():
-        desc = f"{desc}\n\n#Shorts".strip()
-
-    metadata = {
-        "snippet": {
-            "title": title[:100],  # YouTube title limit
-            "description": desc[:5000],
-            "tags": tags or ["Shorts", "ClipSnipr"],
-            "categoryId": "22",  # People & Blogs
-        },
-        "status": {
-            "privacyStatus": privacy_status if privacy_status in ("public", "unlisted", "private") else "public",
-            "selfDeclaredMadeForKids": False,
-        },
-    }
-
-    init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json; charset=UTF-8",
-        "X-Upload-Content-Length": str(file_size),
-        "X-Upload-Content-Type": "video/mp4",
-    }
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        # Step 1: Initiate resumable upload session
-        init_resp = await client.post(init_url, headers=headers, json=metadata)
-        if init_resp.status_code not in (200, 201):
-            raise RuntimeError(f"Failed to initiate YouTube upload: HTTP {init_resp.status_code} - {init_resp.text}")
-
-        upload_url = init_resp.headers.get("Location")
-        if not upload_url:
-            raise RuntimeError("YouTube API did not return an upload session Location header.")
-
-    # Step 2: Upload file bytes
-    # Read and stream chunk/file
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        with open(file_path, "rb") as f:
-            upload_headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "video/mp4",
-                "Content-Length": str(file_size),
-            }
-            upload_resp = await client.put(upload_url, headers=upload_headers, content=f.read())
-
-        if upload_resp.status_code not in (200, 201):
-            raise RuntimeError(f"YouTube upload transfer failed: HTTP {upload_resp.status_code} - {upload_resp.text}")
-
-        result_data = upload_resp.json()
-
-    video_id = result_data.get("id", "")
-    shorts_url = f"https://youtube.com/shorts/{video_id}" if video_id else ""
-    return {
-        "video_id": video_id,
-        "remote_url": shorts_url,
-        "title": title,
-        "status": "published",
         "raw": result_data,
     }
 
