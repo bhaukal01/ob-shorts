@@ -132,6 +132,29 @@ def init_db() -> None:
                 created_at TIMESTAMP
             )
         """)
+
+        # 5. project_batch_posts (Complete Project Sequential Uploader with Rate-Limit Auto-Retry)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS project_batch_posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT UNIQUE,
+                status TEXT DEFAULT 'pending',
+                youtube_account_id INTEGER,
+                instagram_account_id INTEGER,
+                privacy_status TEXT DEFAULT 'public',
+                delay_seconds INTEGER DEFAULT 300,
+                current_clip_index INTEGER DEFAULT 0,
+                total_clips INTEGER DEFAULT 0,
+                uploaded_clips INTEGER DEFAULT 0,
+                failed_clips INTEGER DEFAULT 0,
+                next_upload_at REAL DEFAULT 0,
+                retry_count INTEGER DEFAULT 0,
+                last_error TEXT DEFAULT '',
+                logs_json TEXT DEFAULT '[]',
+                created_at TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+        """)
         conn.commit()
 
         # Migrate social_accounts if old single-platform schema is present
@@ -660,6 +683,186 @@ def delete_live_monitor(monitor_id: int) -> bool:
         cursor.execute("DELETE FROM live_monitors WHERE id = ?", (monitor_id,))
         conn.commit()
         return cursor.rowcount > 0
+
+
+# --- Project Batch Posts Helpers ---
+
+def create_or_update_batch_post(
+    job_id: str,
+    youtube_account_id: Optional[int] = None,
+    instagram_account_id: Optional[int] = None,
+    privacy_status: str = "public",
+    delay_seconds: int = 300,
+    total_clips: int = 0,
+) -> Dict[str, Any]:
+    """Create or reset a batch upload record for a project."""
+    now = _now_iso()
+    with _LOCK, get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM project_batch_posts WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute("""
+                UPDATE project_batch_posts SET
+                    status = 'pending',
+                    youtube_account_id = ?,
+                    instagram_account_id = ?,
+                    privacy_status = ?,
+                    delay_seconds = ?,
+                    total_clips = ?,
+                    current_clip_index = 0,
+                    uploaded_clips = 0,
+                    failed_clips = 0,
+                    next_upload_at = 0,
+                    retry_count = 0,
+                    last_error = '',
+                    logs_json = '[]',
+                    updated_at = ?
+                WHERE job_id = ?
+            """, (
+                youtube_account_id,
+                instagram_account_id,
+                privacy_status,
+                delay_seconds,
+                total_clips,
+                now,
+                job_id,
+            ))
+        else:
+            cursor.execute("""
+                INSERT INTO project_batch_posts (
+                    job_id, status, youtube_account_id, instagram_account_id,
+                    privacy_status, delay_seconds, current_clip_index, total_clips,
+                    uploaded_clips, failed_clips, next_upload_at, retry_count,
+                    last_error, logs_json, created_at, updated_at
+                ) VALUES (?, 'pending', ?, ?, ?, ?, 0, ?, 0, 0, 0, 0, '', '[]', ?, ?)
+            """, (
+                job_id,
+                youtube_account_id,
+                instagram_account_id,
+                privacy_status,
+                delay_seconds,
+                total_clips,
+                now,
+                now,
+            ))
+        conn.commit()
+        cursor.execute("SELECT * FROM project_batch_posts WHERE job_id = ?", (job_id,))
+        res = cursor.fetchone()
+        d = dict(res) if res else {}
+        try:
+            d["logs"] = json.loads(d.get("logs_json") or "[]")
+        except Exception:
+            d["logs"] = []
+        return d
+
+
+def get_batch_post(job_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve batch post state for a job."""
+    with _LOCK, get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM project_batch_posts WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["logs"] = json.loads(d.get("logs_json") or "[]")
+        except Exception:
+            d["logs"] = []
+        return d
+
+
+def get_all_active_batch_posts() -> List[Dict[str, Any]]:
+    """List all pending, running, waiting, or rate-limited project batch posts."""
+    with _LOCK, get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM project_batch_posts
+            WHERE status IN ('pending', 'running', 'waiting_interval', 'rate_limited', 'paused')
+            ORDER BY updated_at DESC
+        """)
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["logs"] = json.loads(d.get("logs_json") or "[]")
+            except Exception:
+                d["logs"] = []
+            result.append(d)
+        return result
+
+
+def update_batch_post_progress(
+    job_id: str,
+    status: Optional[str] = None,
+    current_clip_index: Optional[int] = None,
+    uploaded_clips: Optional[int] = None,
+    failed_clips: Optional[int] = None,
+    next_upload_at: Optional[float] = None,
+    retry_count: Optional[int] = None,
+    last_error: Optional[str] = None,
+    new_log: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Update progress, status, or append a log message to a batch post."""
+    now = _now_iso()
+    with _LOCK, get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM project_batch_posts WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        current = dict(row)
+        logs = []
+        try:
+            logs = json.loads(current.get("logs_json") or "[]")
+        except Exception:
+            pass
+
+        if new_log:
+            logs.append({"time": now, "message": new_log})
+            if len(logs) > 100:
+                logs = logs[-100:]
+
+        updates = ["updated_at = ?"]
+        params = [now]
+
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+        if current_clip_index is not None:
+            updates.append("current_clip_index = ?")
+            params.append(current_clip_index)
+        if uploaded_clips is not None:
+            updates.append("uploaded_clips = ?")
+            params.append(uploaded_clips)
+        if failed_clips is not None:
+            updates.append("failed_clips = ?")
+            params.append(failed_clips)
+        if next_upload_at is not None:
+            updates.append("next_upload_at = ?")
+            params.append(next_upload_at)
+        if retry_count is not None:
+            updates.append("retry_count = ?")
+            params.append(retry_count)
+        if last_error is not None:
+            updates.append("last_error = ?")
+            params.append(last_error)
+        if new_log:
+            updates.append("logs_json = ?")
+            params.append(json.dumps(logs))
+
+        params.append(job_id)
+        cursor.execute(f"UPDATE project_batch_posts SET {', '.join(updates)} WHERE job_id = ?", params)
+        conn.commit()
+
+        cursor.execute("SELECT * FROM project_batch_posts WHERE job_id = ?", (job_id,))
+        up_row = cursor.fetchone()
+        d = dict(up_row) if up_row else {}
+        d["logs"] = logs
+        return d
 
 
 # Auto-initialize on import

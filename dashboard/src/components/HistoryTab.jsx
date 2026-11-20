@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, Download, Film, FolderOpen, Trash2, Play, ChevronDown, ChevronUp, X, HardDrive, Check, Clock, AlertCircle } from 'lucide-react';
+import { Loader2, Download, Film, FolderOpen, Trash2, Play, ChevronDown, ChevronUp, X, HardDrive, Check, Clock, AlertCircle, Share2, CheckCircle2 } from 'lucide-react';
 import { apiJson } from '../lib/api';
+import BatchUploadModal from './BatchUploadModal';
 
 // Video Library & Active Projects (Fast & Lightweight)
 // 1. Projects listed as clean cards with 2 clear options: Open Project or View Clip List.
@@ -12,6 +13,10 @@ export default function HistoryTab({ onReopenProject }) {
   const [deleting, setDeleting] = useState(null);
   const [reopenError, setReopenError] = useState('');
   const [error, setError] = useState('');
+
+  // Project batch uploads state & modal
+  const [batchPostsMap, setBatchPostsMap] = useState({});
+  const [batchModalProject, setBatchModalProject] = useState(null);
 
   // Project whose clips are currently expanded
   const [expandedProjectId, setExpandedProjectId] = useState(null);
@@ -27,8 +32,23 @@ export default function HistoryTab({ onReopenProject }) {
       .catch(() => setError('Could not load your library projects.'));
   };
 
+  const loadBatchPosts = () => {
+    apiJson('/api/publish/batch/active')
+      .then((d) => {
+        const map = {};
+        (d.batches || []).forEach((b) => {
+          map[b.job_id] = b;
+        });
+        setBatchPostsMap(map);
+      })
+      .catch(() => {});
+  };
+
   useEffect(() => {
     loadProjects();
+    loadBatchPosts();
+    const interval = setInterval(loadBatchPosts, 4000);
+    return () => clearInterval(interval);
   }, []);
 
   // Separate ongoing / active jobs from completed ones
@@ -291,8 +311,25 @@ export default function HistoryTab({ onReopenProject }) {
                       </p>
                     </div>
 
-                    {/* 2 Primary Actions: Open Project & Clip List */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* Actions: Open Project, Clip List, Upload Project, Delete */}
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {/* ACTION: Upload Complete Project */}
+                      <button
+                        onClick={() => setBatchModalProject(proj)}
+                        className={`btn-ghost py-2 px-3 text-xs flex items-center gap-1.5 border transition-all shadow-xs rounded-lg ${
+                          batchPostsMap[proj.job_id] && ['running', 'waiting_interval', 'rate_limited'].includes(batchPostsMap[proj.job_id].status)
+                            ? 'border-brandblue/50 bg-brandblue/10 text-brandblue font-semibold ring-1 ring-brandblue/30'
+                            : 'border-rule hover:border-brandblue/40 text-ink hover:text-brandblue'
+                        }`}
+                        title="Upload all clips in this project sequentially (1 clip / 5 mins with automatic rate-limit pause & retry)"
+                      >
+                        <Share2 size={13} className="text-brandblue" />
+                        <span>Upload Project</span>
+                        {batchPostsMap[proj.job_id] && ['running', 'waiting_interval', 'rate_limited'].includes(batchPostsMap[proj.job_id].status) && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-brandblue animate-ping" />
+                        )}
+                      </button>
+
                       {/* ACTION 1: Open Project in Workspace / Live View */}
                       <button
                         onClick={() => handleReopen(proj.job_id, 'completed')}
@@ -335,6 +372,50 @@ export default function HistoryTab({ onReopenProject }) {
                       </button>
                     </div>
                   </div>
+
+                  {/* Real-time Project Batch Upload Status Banner */}
+                  {batchPostsMap[proj.job_id] && (
+                    <div className="mx-4 sm:mx-5 mb-4 p-2.5 rounded-xl border border-rule/70 bg-paper2/80 flex flex-wrap items-center justify-between gap-2.5 text-xs animate-fade">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {batchPostsMap[proj.job_id].status === 'running' && (
+                          <span className="tag-uniform bg-brandblue/20 text-brandblue border-brandblue/30 text-[11px] py-0.5 px-2 flex items-center gap-1.5">
+                            <Loader2 size={11} className="animate-spin" /> Uploading Clip #{batchPostsMap[proj.job_id].current_clip_index + 1}
+                          </span>
+                        )}
+                        {batchPostsMap[proj.job_id].status === 'waiting_interval' && (
+                          <span className="tag-uniform bg-cyan-500/20 text-cyan-400 border-cyan-500/30 text-[11px] py-0.5 px-2 flex items-center gap-1.5 font-mono">
+                            <Clock size={11} /> Next in {Math.floor((batchPostsMap[proj.job_id].remaining_seconds || 0) / 60)}m {(batchPostsMap[proj.job_id].remaining_seconds || 0) % 60}s
+                          </span>
+                        )}
+                        {batchPostsMap[proj.job_id].status === 'rate_limited' && (
+                          <span className="tag-uniform bg-amber-500/20 text-amber-400 border-amber-500/30 text-[11px] py-0.5 px-2 flex items-center gap-1.5 font-mono">
+                            <AlertCircle size={11} /> Paused (Rate Limit) · Retry in {Math.floor((batchPostsMap[proj.job_id].remaining_seconds || 0) / 60)}m
+                          </span>
+                        )}
+                        {batchPostsMap[proj.job_id].status === 'paused' && (
+                          <span className="tag-uniform bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[11px] py-0.5 px-2">
+                            Paused by User
+                          </span>
+                        )}
+                        {batchPostsMap[proj.job_id].status === 'completed' && (
+                          <span className="tag-uniform bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[11px] py-0.5 px-2 flex items-center gap-1.5">
+                            <Check size={11} /> All {batchPostsMap[proj.job_id].total_clips} Clips Uploaded
+                          </span>
+                        )}
+                        <span className="text-[11px] text-muted font-mono">
+                          {batchPostsMap[proj.job_id].uploaded_clips} / {batchPostsMap[proj.job_id].total_clips} clips uploaded
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => setBatchModalProject(proj)}
+                        className="text-[11px] font-semibold text-brandblue hover:underline flex items-center gap-1"
+                      >
+                        <span>Manage Queue</span>
+                        <span>→</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Expanded Clip List Drawer (Lazy Loaded & S3 Streaming) */}
                   {isExpanded && (
@@ -466,6 +547,22 @@ export default function HistoryTab({ onReopenProject }) {
           </div>
         </div>
       )}
+
+      {/* Batch Project Uploader Modal */}
+      <BatchUploadModal
+        isOpen={!!batchModalProject}
+        onClose={() => setBatchModalProject(null)}
+        project={batchModalProject}
+        batchState={batchModalProject ? batchPostsMap[batchModalProject.job_id] : null}
+        onBatchUpdated={(updatedBatch) => {
+          if (updatedBatch && updatedBatch.job_id) {
+            setBatchPostsMap((prev) => ({
+              ...prev,
+              [updatedBatch.job_id]: updatedBatch,
+            }));
+          }
+        }}
+      />
     </div>
   );
 }

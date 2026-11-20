@@ -3500,6 +3500,82 @@ async def get_publish_logs_endpoint(job_id: Optional[str] = None, limit: int = 5
     return {"logs": database.get_publish_logs(job_id=job_id, limit=limit)}
 
 
+# --- Project Batch Upload Endpoints (1 clip / 5 mins with Rate Limit Auto-Retry) ---
+
+class StartBatchProjectUploadRequest(BaseModel):
+    job_id: str
+    youtube_account_id: Optional[int] = None
+    instagram_account_id: Optional[int] = None
+    privacy_status: Optional[str] = "public"
+    delay_seconds: Optional[int] = 300  # Default 5 minutes
+
+
+@router.post("/api/publish/batch/start")
+async def start_batch_upload_endpoint(req: StartBatchProjectUploadRequest, request: Request):
+    """Start or restart a sequential project batch upload (1 clip / 5 mins)."""
+    base_url = str(request.base_url).rstrip("/")
+    import auto_poster
+    try:
+        batch = auto_poster.start_batch_project_upload(
+            job_id=req.job_id,
+            youtube_account_id=req.youtube_account_id,
+            instagram_account_id=req.instagram_account_id,
+            privacy_status=req.privacy_status or "public",
+            delay_seconds=req.delay_seconds if req.delay_seconds is not None else 300,
+            request_base_url=base_url,
+        )
+        return {"status": "ok", "batch": batch}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/api/publish/batch/active")
+async def get_active_batches_endpoint():
+    """List all currently active or paused project batch uploads."""
+    batches = database.get_all_active_batch_posts()
+    now = time.time()
+    for b in batches:
+        nxt = b.get("next_upload_at") or 0
+        b["remaining_seconds"] = max(0, int(nxt - now)) if nxt > now else 0
+    return {"batches": batches}
+
+
+@router.get("/api/publish/batch/{job_id}")
+async def get_batch_upload_status_endpoint(job_id: str):
+    """Get real-time batch upload status, remaining cooldown, and progress logs for a project."""
+    batch = database.get_batch_post(job_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="No batch upload found for this project.")
+    now = time.time()
+    nxt = batch.get("next_upload_at") or 0
+    batch["remaining_seconds"] = max(0, int(nxt - now)) if nxt > now else 0
+    return {"batch": batch}
+
+
+@router.post("/api/publish/batch/{job_id}/pause")
+async def pause_batch_upload_endpoint(job_id: str):
+    """Pause an active project batch upload."""
+    import auto_poster
+    auto_poster.pause_batch_project_upload(job_id)
+    return {"status": "ok", "message": "Batch upload paused."}
+
+
+@router.post("/api/publish/batch/{job_id}/resume")
+async def resume_batch_upload_endpoint(job_id: str):
+    """Resume a paused or rate-limited project batch upload."""
+    import auto_poster
+    auto_poster.resume_batch_project_upload(job_id)
+    return {"status": "ok", "message": "Batch upload resumed."}
+
+
+@router.post("/api/publish/batch/{job_id}/cancel")
+async def cancel_batch_upload_endpoint(job_id: str):
+    """Cancel an ongoing project batch upload."""
+    import auto_poster
+    auto_poster.cancel_batch_project_upload(job_id)
+    return {"status": "ok", "message": "Batch upload cancelled."}
+
+
 class AddMonitorRequest(BaseModel):
     channel_url: str
     platform: Optional[str] = None

@@ -4133,6 +4133,11 @@ async def lifespan(app: FastAPI):
         stream_monitor.start_background_monitor()
     except Exception as e:
         print(f"⚠️ Failed to start live stream monitor: {e}")
+    try:
+        import auto_poster
+        auto_poster.resume_active_batch_uploads()
+    except Exception as e:
+        print(f"⚠️ Failed to resume batch uploads: {e}")
     # Rehydrate finished jobs from disk before serving (survives restarts).
     _recover_jobs_from_disk()
     # Re-enqueue jobs that were mid-processing when we stopped (redeploy). Their
